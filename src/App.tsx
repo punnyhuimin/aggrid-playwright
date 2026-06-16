@@ -21,12 +21,12 @@ ModuleRegistry.registerModules([AllCommunityModule]);
 function App() {
   // Row Data: The data to be displayed.
   const [rowData] = useState<ICar[]>([
-    { make: "Tesla", model: "Model Y", price: 64950, electric: true, lapTime: 95 },
-    { make: "Ford", model: "F-Series", price: 33850, electric: false, lapTime: 132 },
-    { make: "Toyota", model: "Corolla", price: 29600, electric: false, lapTime: 140 },
-    { make: "Mercedes", model: "EQA", price: 48890, electric: true, lapTime: 110 },
-    { make: "Fiat", model: "500", price: 15774, electric: false, lapTime: 150 },
-    { make: "Nissan", model: "Juke", price: 20675, electric: false, lapTime: 145 },
+    { make: "Tesla", model: "Model Y", price: 64950, electric: true, lapTime: 95_000 },
+    { make: "Ford", model: "F-Series", price: 33850, electric: false, lapTime: 132_000 },
+    { make: "Toyota", model: "Corolla", price: 29600, electric: false, lapTime: 140_000 },
+    { make: "Mercedes", model: "EQA", price: 48890, electric: true, lapTime: 110_000 },
+    { make: "Fiat", model: "500", price: 15774, electric: false, lapTime: 150_000 },
+    { make: "Nissan", model: "Juke", price: 20675, electric: false, lapTime: 145_000 },
   ]);
 
   // Column Definitions: Defines & controls grid columns.

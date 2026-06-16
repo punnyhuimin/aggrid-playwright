@@ -3,27 +3,29 @@ import type { CustomCellEditorProps } from "ag-grid-react";
 import { TextField } from "@mui/material";
 import { formatDuration } from "./duration";
 
-// Three editable segments: hours (no upper bound on digits), minutes and
-// seconds (always 2 digits). Each segment is a buffer of typed digits,
-// rendered with "_" placeholders for the digits not yet entered - e.g.
-// typing "2" into an empty hours segment shows "2_".
+// Three editable segments - hours, minutes, seconds - each always 2 digits.
+// Each segment is a buffer of typed digits, rendered with "_" placeholders
+// for the digits not yet entered - e.g. typing "2" into an empty hours
+// segment shows "2_". The overall duration is capped at 99:59:59.
+// The cell value itself is in milliseconds; these segments work in seconds.
 type Segments = [string[], string[], string[]];
 
+const MAX_SECONDS = 99 * 3600 + 59 * 60 + 59; // 99:59:59
+const WIDTHS: [number, number, number] = [2, 2, 2];
+
 function initialSegments(value: number | null | undefined): Segments {
-  const formatted = formatDuration(value ?? 0).replace("-", "");
+  const totalSeconds = Math.floor(Math.max(value ?? 0, 0) / 1000);
+  const clamped = Math.min(totalSeconds, MAX_SECONDS);
+  const formatted = formatDuration(clamped * 1000);
   const [hh, mm, ss] = formatted.split(":");
   return [hh.split(""), mm.split(""), ss.split("")];
 }
 
-function segmentsToSeconds(segments: Segments): number {
+function segmentsToMillis(segments: Segments): number {
   const [hh, mm, ss] = segments;
   const toNumber = (digits: string[]) => (digits.length ? parseInt(digits.join(""), 10) : 0);
-  return toNumber(hh) * 3600 + toNumber(mm) * 60 + toNumber(ss);
-}
-
-// Hours can grow without limit; minutes/seconds are always 2 digits.
-function widthsFor(segments: Segments): [number, number, number] {
-  return [Math.max(2, segments[0].length), 2, 2];
+  const totalSeconds = toNumber(hh) * 3600 + toNumber(mm) * 60 + toNumber(ss);
+  return Math.min(totalSeconds, MAX_SECONDS) * 1000;
 }
 
 export default function DurationCellEditor(props: CustomCellEditorProps<unknown, number>) {
@@ -33,20 +35,19 @@ export default function DurationCellEditor(props: CustomCellEditorProps<unknown,
   const [fresh, setFresh] = useState(true);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const widths = widthsFor(segments);
-  const display = segments.map((digits, i) => digits.join("").padEnd(widths[i], "_")).join(":");
+  const display = segments.map((digits, i) => digits.join("").padEnd(WIDTHS[i], "_")).join(":");
 
   const segmentRanges: [number, number][] = [];
   {
     let pos = 0;
-    for (const width of widths) {
+    for (const width of WIDTHS) {
       segmentRanges.push([pos, pos + width]);
       pos += width + 1; // +1 for the colon separator
     }
   }
 
   useEffect(() => {
-    onValueChange(segmentsToSeconds(segments));
+    onValueChange(segmentsToMillis(segments));
   }, [segments, onValueChange]);
 
   useEffect(() => {
@@ -78,16 +79,15 @@ export default function DurationCellEditor(props: CustomCellEditorProps<unknown,
 
     if (/^[0-9]$/.test(event.key)) {
       event.preventDefault();
-      const isHours = activeSegment === 0;
       const current = fresh ? [] : segments[activeSegment];
-      const updated = isHours ? [...current, event.key] : [...current, event.key].slice(-2);
+      const updated = [...current, event.key].slice(-2);
       setSegments((prev) => {
         const next: Segments = [...prev];
         next[activeSegment] = updated;
         return next;
       });
       setFresh(false);
-      if (!isHours && updated.length >= 2 && activeSegment < 2) {
+      if (updated.length >= 2 && activeSegment < 2) {
         setActiveSegment(activeSegment + 1);
         setFresh(true);
       }
