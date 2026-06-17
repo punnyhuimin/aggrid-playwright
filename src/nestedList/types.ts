@@ -1,6 +1,7 @@
 export interface IProduct {
   id: string;
   name: string;
+  hasError?: boolean;
 }
 
 export interface ISubcategory {

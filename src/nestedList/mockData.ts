@@ -27,6 +27,7 @@ export function generateCategories(
       products: Array.from({ length: productsPerSubcat }, (_, pi) => ({
         id: `product-${ci + 1}-${si + 1}-${pi + 1}`,
         name: `Product ${ci + 1}.${si + 1}.${pi + 1}`,
+        hasError: (ci + si + pi) % 7 === 0,
       })),
     })),
   }));

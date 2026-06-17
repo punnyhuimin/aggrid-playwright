@@ -5,8 +5,10 @@ import { Tab, Tabs } from "@mui/material";
 import NestedList from "./nestedList/NestedList";
 import DurationCellEditor from "./durationEditor/DurationCellEditor";
 import { formatDuration } from "./durationEditor/duration";
+import CollabDemo from "./collab/CollabDemo";
+import RtkEditDemo from "./rtkEditDemo/RtkEditDemo";
 
-type View = "grid" | "nested";
+type View = "grid" | "nested" | "collab" | "rtkdemo";
 
 export type ICar = {
   make: string;
@@ -58,6 +60,8 @@ function App() {
       <Tabs value={view} onChange={(_, newView: View) => setView(newView)}>
         <Tab label="AG Grid" value="grid" />
         <Tab label="Nested List" value="nested" />
+        <Tab label="Collab Demo" value="collab" />
+        <Tab label="RTK Edit Demo" value="rtkdemo" />
       </Tabs>
       <div style={{ flex: 1, minHeight: 0 }}>
         {view === "grid" && (
@@ -68,6 +72,8 @@ function App() {
           />
         )}
         {view === "nested" && <NestedList />}
+        {view === "collab" && <CollabDemo />}
+        {view === "rtkdemo" && <RtkEditDemo />}
       </div>
     </div>
   );

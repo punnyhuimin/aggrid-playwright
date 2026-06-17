@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { memo, useCallback, useMemo, useState } from "react";
 import { List, useDynamicRowHeight, type RowComponentProps } from "react-window";
 import { Accordion, AccordionDetails, AccordionSummary, Checkbox, Typography } from "@mui/material";
 import { mockCategories } from "./mockData";
@@ -18,6 +18,12 @@ interface NestedListRowProps {
   toggleCategorySelected: (category: ICategory) => void;
   toggleSubcategorySelected: (categoryId: string, subcategory: ISubcategory) => void;
   toggleProductSelected: (categoryId: string, subcategoryId: string, productId: string) => void;
+}
+
+const MemoizedCategoryRow = memo(CategoryRow);
+
+function CategoryRowWrapper(props: RowComponentProps<NestedListRowProps>) {
+  return <MemoizedCategoryRow {...props} />;
 }
 
 function CategoryRow({
@@ -68,6 +74,7 @@ function CategoryRow({
             const selectedInSub = selectedProductsByCategory[sub.id] ?? EMPTY_SET;
             const subChecked = sub.products.length > 0 && selectedInSub.size === sub.products.length;
             const subIndeterminate = selectedInSub.size > 0 && !subChecked;
+            const subHasErrors = sub.products.some((p) => p.hasError);
 
             return (
               <Accordion
@@ -76,6 +83,7 @@ function CategoryRow({
                 expanded={expandedSubs.has(sub.id)}
                 onChange={() => toggleSubcategory(category.id, sub.id)}
                 slotProps={{ transition: { unmountOnExit: true } }}
+                sx={subHasErrors ? { borderLeft: "4px solid #FFC107" } : undefined}
               >
                 <AccordionSummary
                   expandIcon={<span>▼</span>}
@@ -91,7 +99,7 @@ function CategoryRow({
                 </AccordionSummary>
                 <AccordionDetails sx={{ p: 0 }}>
                   {sub.products.map((product) => (
-                    <div key={product.id} style={{ display: "flex", alignItems: "center", paddingLeft: CHECKBOX_WIDTH }}>
+                    <div key={product.id} style={{ display: "flex", alignItems: "center", paddingLeft: CHECKBOX_WIDTH, borderLeft: product.hasError ? "4px solid #FFC107" : undefined }}>
                       <Checkbox
                         checked={selectedInSub.has(product.id)}
                         onChange={() => toggleProductSelected(category.id, sub.id, product.id)}
@@ -124,6 +132,14 @@ export default function NestedList() {
       } else {
         next.add(categoryId);
       }
+      return next;
+    });
+    setExpandedSubcategories((prev) => {
+      if (!prev[categoryId]?.size) {
+        return prev;
+      }
+      const next = { ...prev };
+      delete next[categoryId];
       return next;
     });
   }, []);
@@ -182,7 +198,7 @@ export default function NestedList() {
     });
   }, []);
 
-  const rowProps: NestedListRowProps = {
+  const rowProps = useMemo<NestedListRowProps>(() => ({
     categories: mockCategories,
     expandedCategories,
     expandedSubcategories,
@@ -192,12 +208,21 @@ export default function NestedList() {
     toggleCategorySelected,
     toggleSubcategorySelected,
     toggleProductSelected,
-  };
+  }), [
+    expandedCategories,
+    expandedSubcategories,
+    selectedProducts,
+    toggleCategory,
+    toggleSubcategory,
+    toggleCategorySelected,
+    toggleSubcategorySelected,
+    toggleProductSelected,
+  ]);
 
   return (
     <div style={{ height: "100%", width: "100%", maxHeight: "calc(100% - 32px)", overflow: "auto" }}>
       <List
-        rowComponent={CategoryRow}
+        rowComponent={CategoryRowWrapper}
         rowCount={mockCategories.length}
         rowHeight={rowHeight}
         rowProps={rowProps}
