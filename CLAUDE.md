@@ -25,3 +25,9 @@ To run a single component test, pass a file path: `npm run test-ct -- src/App.sp
 - `playwright-ct.config.ts` — Playwright component test config; snapshots go to `./__snapshots__`, CT server runs on port 3100.
 
 Since the app is currently a single component, most feature work and grid configuration (column defs, row data, cell editing, etc.) happens directly in `src/App.tsx`.
+
+# Project Instructions
+
+When working with ArcGIS code, follow the guidance in:
+
+- ./.claude/.skills/arcgis/SKILLS.md
