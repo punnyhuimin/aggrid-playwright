@@ -51,7 +51,9 @@ const REMOTE_CONFLICT = {
 export default function RtkEditDemo() {
   const dispatch = useAppDispatch()
   const log = useAppSelector((s) => s.edits.log)
-  const dirtyCount = useAppSelector((s) => Object.keys(s.edits.patches).length)
+  const dirtyCount = useAppSelector(
+    (s) => Object.keys(s.edits.patches).length + s.edits.createdRows.length + s.edits.deletedRowIds.length,
+  )
 
   // Keep the RTKQuery subscription alive so keepUnusedDataFor=Infinity is exercised
   useGetDocumentQuery(MOCK_DOC_ID)
@@ -79,7 +81,7 @@ export default function RtkEditDemo() {
           RTK Edit Demo
         </Typography>
         <Chip
-          label={`${dirtyCount} dirty field${dirtyCount !== 1 ? 's' : ''}`}
+          label={`${dirtyCount} pending change${dirtyCount !== 1 ? 's' : ''}`}
           size="small"
           color={dirtyCount ? 'warning' : 'success'}
           variant={dirtyCount ? 'filled' : 'outlined'}

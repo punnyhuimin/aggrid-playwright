@@ -9,27 +9,36 @@ import type { TaskRow, SubtaskRow, Subtask } from '../rtkEditDemo/mockServerDoc'
 
 /**
  * Factory — call once per component with useMemo(() => makeTaskRowSelector(id), []).
- * Merges RTKQuery server doc with local patches. flattenToTaskRows only runs when
- * serverDoc changes, not on every edit.
+ * Merges RTKQuery server doc with local patches, filters deleted rows, and appends
+ * locally created rows. flattenToTaskRows only runs when serverDoc changes.
  */
 export function makeTaskRowSelector(docId: string) {
   return createSelector(
     (state: RootState) => documentApi.endpoints.getDocument.select(docId)(state).data,
     (state: RootState) => state.edits.patches,
-    (serverDoc, patches): TaskRow[] => {
-      if (!serverDoc) return []
-      return flattenToTaskRows(serverDoc).map((row) => {
-        const result = { ...row } as Record<string, unknown> & TaskRow
-        const prefix = row._id + '.'
-        for (const [path, entry] of Object.entries(patches)) {
-          if (!path.startsWith(prefix)) continue
-          const field = path.slice(prefix.length)
-          if (!field.includes('.')) result[field] = entry.localValue
-        }
-        return result as TaskRow
-      })
+    (state: RootState) => state.edits.createdRows,
+    (state: RootState) => state.edits.deletedRowIds,
+    (serverDoc, patches, createdRows, deletedRowIds): TaskRow[] => {
+      const serverRows = serverDoc
+        ? flattenToTaskRows(serverDoc)
+            .filter((row) => !deletedRowIds.includes(row._id))
+            .map((row) => applyPatchesToRow(row, patches))
+        : []
+      const patchedCreatedRows = createdRows.map((row) => applyPatchesToRow(row, patches))
+      return [...serverRows, ...patchedCreatedRows]
     },
   )
+}
+
+function applyPatchesToRow(row: TaskRow, patches: Record<DotPath, EditEntry>): TaskRow {
+  const result = { ...row } as Record<string, unknown> & TaskRow
+  const prefix = row._id + '.'
+  for (const [path, entry] of Object.entries(patches)) {
+    if (!path.startsWith(prefix)) continue
+    const field = path.slice(prefix.length)
+    if (!field.includes('.')) result[field] = entry.localValue
+  }
+  return result as TaskRow
 }
 
 // ── Subtask row helper (called inside component, not a memoized selector) ────

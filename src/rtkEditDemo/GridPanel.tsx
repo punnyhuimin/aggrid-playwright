@@ -1,9 +1,9 @@
 import { useMemo, useState, useCallback } from 'react'
 import { AgGridReact } from 'ag-grid-react'
-import type { ColDef, CellValueChangedEvent, RowSelectedEvent } from 'ag-grid-community'
-import { Box, Typography } from '@mui/material'
+import type { ColDef, CellValueChangedEvent, RowSelectedEvent, RowClassParams } from 'ag-grid-community'
+import { Box, Button, Tooltip, Typography } from '@mui/material'
 import { useAppDispatch, useAppSelector } from '../store/index'
-import { cellEdited, batchEdited } from '../store/editsSlice'
+import { cellEdited, batchEdited, rowAdded, rowDeleted } from '../store/editsSlice'
 import { makeTaskRowSelector } from '../store/selectors'
 import { DirtyCell } from './DirtyCell'
 import SubtaskGrid from './SubtaskGrid'
@@ -45,6 +45,7 @@ export default function GridPanel() {
   const rowSelector = useMemo(() => makeTaskRowSelector(MOCK_DOC_ID), [])
   const rowData = useAppSelector(rowSelector)
   const patches = useAppSelector((s) => s.edits.patches)
+  const createdRows = useAppSelector((s) => s.edits.createdRows)
 
   const handleCellValueChanged = useCallback(
     (event: CellValueChangedEvent<TaskRow>) => {
@@ -83,14 +84,75 @@ export default function GridPanel() {
     }
   }, [])
 
+  const handleAddRow = useCallback(() => {
+    const contextRow = selectedRow ?? rowData[0]
+    const newId = `new-${crypto.randomUUID().slice(0, 8)}`
+    const newRow: TaskRow = {
+      _id: newId,
+      _divisionName: contextRow?._divisionName ?? 'Engineering',
+      _projectName: contextRow?._projectName ?? 'Alpha Platform',
+      id: newId,
+      name: 'New Task',
+      status: 'todo',
+      assignee: '',
+      dueDate: '',
+      priority: 'medium',
+      _rawSubtasks: [],
+    }
+    dispatch(rowAdded(newRow))
+  }, [dispatch, selectedRow, rowData])
+
+  const handleDeleteRow = useCallback(() => {
+    if (!selectedRow) return
+    const liveRow = rowData.find((r) => r._id === selectedRow._id)
+    if (!liveRow) return
+    dispatch(rowDeleted({ row: liveRow }))
+    setSelectedRow(null)
+  }, [dispatch, selectedRow, rowData])
+
   // Find the live (patched) version of the selected row from rowData
   const liveSelectedRow = selectedRow
     ? (rowData.find((r) => r._id === selectedRow._id) ?? null)
     : null
 
+  const getRowStyle = useCallback(
+    (params: RowClassParams<TaskRow>) => {
+      if (params.data?._id && createdRows.some((r) => r._id === params.data!._id)) {
+        return { backgroundColor: '#e8f5e9' }
+      }
+      return undefined
+    },
+    [createdRows],
+  )
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
-      {/* Main task grid — L4 rows */}
+      <Box sx={{ display: 'flex', gap: 1, px: 1, py: 0.75, borderBottom: 1, borderColor: 'divider', alignItems: 'center', bgcolor: 'background.paper' }}>
+        <Tooltip title={selectedRow ? `Add task to ${selectedRow._divisionName} / ${selectedRow._projectName}` : "Add task (inherits first row's project)"}>
+          <Button size="small" variant="outlined" color="success" onClick={handleAddRow}>
+            + Add Task
+          </Button>
+        </Tooltip>
+        <Tooltip title={selectedRow ? `Delete "${selectedRow.name}"` : 'Select a row to delete'}>
+          <span>
+            <Button
+              size="small"
+              variant="outlined"
+              color="error"
+              onClick={handleDeleteRow}
+              disabled={!selectedRow}
+            >
+              Delete
+            </Button>
+          </span>
+        </Tooltip>
+        {selectedRow && (
+          <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+            Selected: {selectedRow.name}
+          </Typography>
+        )}
+      </Box>
+
       <Box sx={{ flex: '0 0 55%', minHeight: 0 }}>
         <AgGridReact
           rowData={rowData}
@@ -100,10 +162,10 @@ export default function GridPanel() {
           onCellValueChanged={handleCellValueChanged}
           rowSelection={{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }}
           onRowSelected={handleRowSelected}
+          getRowStyle={getRowStyle}
         />
       </Box>
 
-      {/* Subtask detail panel — L5 rows for selected task */}
       <Box
         sx={{
           flex: '0 0 45%',

@@ -13,10 +13,13 @@ export default function StatusPanel() {
   const undoDepth = useAppSelector((s) => s.edits.undoStack.length)
   const redoDepth = useAppSelector((s) => s.edits.redoStack.length)
   const dirtyPaths = useAppSelector(selectAllDirtyPaths)
+  const createdRows = useAppSelector((s) => s.edits.createdRows)
+  const deletedRowIds = useAppSelector((s) => s.edits.deletedRowIds)
   const [saveDocument, { isLoading: isSaving }] = useSaveDocumentMutation()
 
-  const hasDirty = dirtyPaths.length > 0
+  const hasDirty = dirtyPaths.length > 0 || createdRows.length > 0 || deletedRowIds.length > 0
   const hasConflicts = dirtyPaths.some(([, e]) => e.conflict != null)
+  const totalChanges = dirtyPaths.length + createdRows.length + deletedRowIds.length
 
   const handleSave = async () => {
     await saveDocument(mockCompanyDoc)
@@ -50,7 +53,7 @@ export default function StatusPanel() {
           disabled={isSaving || !hasDirty}
           color={hasConflicts ? 'error' : 'primary'}
         >
-          {isSaving ? 'Saving…' : hasConflicts ? 'Save (resolve conflicts first)' : `Save ${dirtyPaths.length ? `(${dirtyPaths.length} changes)` : ''}`}
+          {isSaving ? 'Saving…' : hasConflicts ? 'Save (resolve conflicts first)' : `Save ${totalChanges ? `(${totalChanges} changes)` : ''}`}
         </Button>
         {hasConflicts && (
           <Typography variant="caption" color="error" sx={{ display: 'block', mt: 0.5, px: 0.5 }}>
@@ -62,11 +65,48 @@ export default function StatusPanel() {
       {/* Dirty paths list */}
       <Box sx={{ flex: 1, overflow: 'auto', p: 1 }}>
         <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 'bold', display: 'block', mb: 0.5 }}>
-          Dirty fields ({dirtyPaths.length})
+          Pending changes ({totalChanges})
         </Typography>
         {!hasDirty && (
           <Typography variant="caption" color="text.secondary">All synced with server.</Typography>
         )}
+        {/* New rows */}
+        {createdRows.map((row) => (
+          <ListItem key={row._id} disableGutters sx={{ alignItems: 'flex-start', py: 0.25 }}>
+            <ListItemText
+              primary={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Typography variant="caption" sx={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                    {row.name || '(unnamed)'}
+                  </Typography>
+                  <Chip label="new row" size="small" color="success" sx={{ height: 16, fontSize: 10 }} />
+                </Box>
+              }
+              secondary={
+                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: 'monospace', display: 'block', fontSize: 9 }}>
+                  {row._divisionName} / {row._projectName}
+                </Typography>
+              }
+            />
+          </ListItem>
+        ))}
+        {/* Deleted rows */}
+        {deletedRowIds.map((id) => (
+          <ListItem key={id} disableGutters sx={{ alignItems: 'flex-start', py: 0.25 }}>
+            <ListItemText
+              primary={
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Chip label="deleted row" size="small" color="error" sx={{ height: 16, fontSize: 10 }} />
+                </Box>
+              }
+              secondary={
+                <Typography variant="caption" color="text.disabled" sx={{ fontFamily: 'monospace', display: 'block', fontSize: 9 }}>
+                  {id}
+                </Typography>
+              }
+            />
+          </ListItem>
+        ))}
         <List dense disablePadding>
           {dirtyPaths.map(([path, entry]) => (
             <ListItem key={path} disableGutters sx={{ alignItems: 'flex-start', py: 0.25 }}>
