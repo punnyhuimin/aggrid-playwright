@@ -1,196 +1,221 @@
 # RTKEditDemo Architecture
 
-## Component Tree
+## Layer Diagram
 
 ```
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                            RTKEditDemo                                       ║
-║  [Simulate: remote (non-conflict)]  [Simulate: remote (conflict)]            ║
-║  [N pending changes chip]  [Clear log]                                       ║
-╠═══════════════════════════════════════════╦══════════════╦════════════════════╣
-║              GridPanel                    ║ StatusPanel  ║  Operation Log     ║
-║  ┌───────────────────────────────────┐    ║  [Undo n]    ║  [merge] ...       ║
-║  │  Toolbar: [+ Add Task]  [Delete]  │    ║  [Redo n]    ║  [edit] ...        ║
-║  └───────────────────────────────────┘    ║  [Save (n)]  ║  [add] ...         ║
-║  ┌───────────────────────────────────┐    ║              ║  [delete] ...      ║
-║  │  AgGridReact (L4 Tasks)           │    ║  new rows    ║  [server] ...      ║
-║  │  cols: Division, Project, Task    │    ║  deleted ids ║                    ║
-║  │        Status, Assignee, Due,     │    ║  dirty cells ║                    ║
-║  │        Priority                   │    ║  (w/ conflict║                    ║
-║  │  renderer: DirtyCell ─────────────╫────╫──patches     ║                    ║
-║  │  new rows highlighted green       │    ║  badges)     ║                    ║
-║  └───────────────────────────────────┘    ║              ║                    ║
-║  (row selected)                           ║              ║                    ║
-║  ┌───────────────────────────────────┐    ║              ║                    ║
-║  │  SubtaskGrid (L5 Subtasks)        │    ║              ║                    ║
-║  │  renderer: DirtyCell ─────────────╫────╫──patches     ║                    ║
-║  └───────────────────────────────────┘    ║              ║                    ║
-╚═══════════════════════════════════════════╩══════════════╩════════════════════╝
-  ▲ rowData via makeTaskRowSelector          ▲ selectAllDirtyPaths / raw state
-  │ applyPatchesToSubtaskRows (useMemo)      │ dispatch(action) ──────────────────►
-  │                                          │                                    │
-╔═╧══════════════════════════════════════════╧══════════════════════════════════╗ │
-║                            selectors.ts                                        ║ │
-║  makeTaskRowSelector(docId)  ← createSelector (memoized)                       ║ │
-║    inputs: serverDoc, patches, createdRows, deletedRowIds                      ║ │
-║    1. flattenToTaskRows(serverDoc)                                              ║ │
-║    2. filter out deletedRowIds                                                  ║ │
-║    3. overlay patches (localValue) on each server row                          ║ │
-║    4. overlay patches on each createdRow                                       ║ │
-║    5. return [...serverRows, ...patchedCreatedRows]                             ║ │
-║                                                                                ║ │
-║  applyPatchesToSubtaskRows(taskId, rawSubtasks, patches)  ← used in component  ║ │
-║  selectEditEntry / selectAllDirtyPaths / selectIsDirtyUnder                    ║ │
-╚═╤══════════════════════════════════════════════════════════════════════════════╝ │
-  │ reads from                                                                     │
-  ▼                                                                                ▼
-╔══════════════════════════════════════════════════════════════════════════════════╗
-║                              Redux Store                                         ║
-║  ┌────────────────────────────────────────────────────────────────────────┐     ║
-║  │  editsSlice                                                            │     ║
-║  │                                                                        │     ║
-║  │  patches:       Record<DotPath, EditEntry>                             │     ║
-║  │  createdRows:   TaskRow[]        ← local-only rows                     │     ║
-║  │  deletedRowIds: string[]         ← server rows marked for delete       │     ║
-║  │  undoStack:     InversePatch[][] ← max 100 groups                      │     ║
-║  │  redoStack:     InversePatch[][]                                       │     ║
-║  │  log:           string[]                                               │     ║
-║  │                                                                        │     ║
-║  │  InversePatch = CellPatch | RowAddPatch | RowDeletePatch               │     ║
-║  │    CellPatch      { kind:'cell',      path, oldValue, newValue }       │     ║
-║  │    RowAddPatch    { kind:'addRow',    row: TaskRow }                   │     ║
-║  │    RowDeletePatch { kind:'deleteRow', row: TaskRow, wasLocal }         │     ║
-║  │                                                                        │     ║
-║  │  Actions: cellEdited  batchEdited  rowAdded  rowDeleted                │     ║
-║  │           mergeRemote  undo  redo  saveSuccess  clearLog               │     ║
-║  └────────────────────────────────────────────────────────────────────────┘     ║
-║  ┌────────────────────────────────────────────────────────────────────────┐     ║
-║  │  documentApi (RTK Query)  keepUnusedDataFor: Infinity                  │     ║
-║  │  getDocument(docId) → mockCompanyDoc (fake fetch)                      │     ║
-║  │  saveDocument(doc)  → 700ms simulated delay                            │     ║
-║  └────────────────────────────────────────────────────────────────────────┘     ║
-╚══════════════════════════════════════════════════════════════════════════════════╝
-         ▲ doc shape + row types
+╔═══════════════════════════════════════════════════════════════════════════════════╗
+║                              RTKEditDemo                                          ║
+║  [Simulate: remote (non-conflict)]  [Simulate: remote (conflict)]  [Clear log]   ║
+║  [N pending changes chip]                                                         ║
+╠═══════════════════════════════════════╦═══════════════╦═══════════════════════════╣
+║            GridPanel                  ║  StatusPanel  ║      Operation Log        ║
+║  Toolbar: [+ Add Task]  [Delete]      ║  [Undo n]     ║  [merge/edit/add/...] ... ║
+║                                       ║  [Redo n]     ║                           ║
+║  AgGridReact (L4 Tasks)               ║  [Save (n)]   ║                           ║
+║  cols: Division, Project, Task Name   ║               ║                           ║
+║        Status, Assignee, Due, Priority║  new rows     ║                           ║
+║  renderer: DirtyCell                  ║  deleted ids  ║                           ║
+║    ← reads state.edits.patches        ║  dirty cells  ║                           ║
+║      (via store, no context prop)     ║  (conflicts)  ║                           ║
+║  new rows: green background           ║               ║                           ║
+║                                       ║               ║                           ║
+║  (row selected) ──► SubtaskGrid       ║               ║                           ║
+║  ┌─────────────────────────────────┐  ║               ║                           ║
+║  │ Toolbar: [+ Add Subtask][Delete]│  ║               ║                           ║
+║  │          [↩ Undo n][Redo n ↪]  │  ║               ║                           ║
+║  │                                 │  ║               ║                           ║
+║  │ AgGridReact (L5 Subtasks)       │  ║               ║                           ║
+║  │ fetched via subtaskApi          │  ║               ║                           ║
+║  │ renderer: DirtyCell             │  ║               ║                           ║
+║  │   ← reads context.patches       │  ║               ║                           ║
+║  │     (editsSubtasks, not store)  │  ║               ║                           ║
+║  │ new subtasks: green background  │  ║               ║                           ║
+║  └─────────────────────────────────┘  ║               ║                           ║
+╚═══════════════════════════════════════╩═══════════════╩═══════════════════════════╝
+  ▲ rowData via makeTaskRowSelector         ▲ selectAllDirtyPaths / raw edits state
+  │                                         │
+  │   dispatch(cellEdited/rowAdded/…) ──────┼──────────────────────────────────────►
+  │                                         │                                        │
+  │   SubtaskGrid: rowData via useMemo      │   dispatch(subtaskCellEdited/…) ───►  │
+  │   (inline, not via selectors.ts)        │                                        │
+  │                                         │                                        ▼
+╔═╧═══════════════════════════════════════╗ │         ╔══════════════════════════════╗
+║             selectors.ts                ║ │         ║  (subtask actions go direct) ║
+║  makeTaskRowSelector(docId)             ║ │         ╚══════════════════════════════╝
+║    inputs: serverDoc, patches,          ║ │
+║            createdRows, deletedRowIds   ║ │
+║    1. flattenToTaskRows(serverDoc)      ║ │
+║    2. filter deletedRowIds              ║ │
+║    3. overlay patches per row           ║ │
+║    4. append patched createdRows        ║ │
+║  selectEditEntry / selectAllDirtyPaths  ║ │
+╚═╤═══════════════════════════════════════╝ │
+  │ reads                                   │ dispatches
+  ▼                                         ▼
+╔═══════════════════════════════════════════════════════════════════════════════════╗
+║                               Redux Store                                         ║
+║                                                                                   ║
+║  ┌─────────────────────────────────────┐  ┌──────────────────────────────────┐   ║
+║  │  edits  (task-level)                │  │  editsSubtasks  (subtask-level)  │   ║
+║  │  ← createEditsSlice('edits')        │  │  ← createEditsSlice('editsSubtasks') ║
+║  │                                     │  │                                  │   ║
+║  │  patches, createdRows,              │  │  patches, createdRows,           │   ║
+║  │  deletedRowIds, undoStack,          │  │  deletedRowIds, undoStack,       │   ║
+║  │  redoStack, log                     │  │  redoStack, log                  │   ║
+║  │                                     │  │                                  │   ║
+║  │  Actions: cellEdited  batchEdited   │  │  Actions: subtaskCellEdited      │   ║
+║  │    rowAdded  rowDeleted             │  │    subtaskBatchEdited            │   ║
+║  │    mergeRemote  undo  redo          │  │    subtaskRowAdded/Deleted       │   ║
+║  │    saveSuccess  clearLog            │  │    subtaskUndo/Redo              │   ║
+║  └─────────────────────────────────────┘  └──────────────────────────────────┘   ║
+║       shared factory: createEditsSlice(name) in editsSlice.ts                    ║
+║       same reducer logic, two independent state trees                             ║
+║                                                                                   ║
+║  ┌─────────────────────────────────────┐  ┌──────────────────────────────────┐   ║
+║  │  documentApi  (RTK Query)           │  │  subtaskApi  (RTK Query)         │   ║
+║  │  keepUnusedDataFor: Infinity        │  │  keepUnusedDataFor: Infinity     │   ║
+║  │  getDocument(docId)                 │  │  getSubtasksByTask(taskId)       │   ║
+║  │  saveDocument(doc) — 700ms delay    │  │  saveSubtasks(entities) — 700ms  │   ║
+║  └─────────────────────────────────────┘  └──────────────────────────────────┘   ║
+╚═══════════════════════════════════════════════════════════════════════════════════╝
+         ▲ doc shape / SubtaskEntity types
          │
-╔════════╧══════════════════════════════════════════════════════════════════╗
-║                       mockServerDoc.ts                                     ║
-║  CompanyDoc → Division[] → Project[] → Task[] → Subtask[] → Metric        ║
-║  L1            L2           L3          L4 (main)  L5 (detail)  L6        ║
-║                                                                            ║
-║  flattenToTaskRows(doc) → TaskRow[] with dot-path _id                      ║
-║  flattenSubtaskRows(taskId, subtasks) → SubtaskRow[]                       ║
-║              pathUtils.ts: getIn / setIn / walkLeafPaths / flattenUpdate   ║
-╚════════════════════════════════════════════════════════════════════════════╝
+╔════════╧══════════════════════════════════════════════════════════════════════════╗
+║                          mockServerDoc.ts                                          ║
+║  CompanyDoc → Division[] → Project[] → Task[] → Subtask[] → Metric               ║
+║  L1            L2           L3          L4 (main)  L5 (detail)  L6               ║
+║                                                                                   ║
+║  flattenToTaskRows(doc) → TaskRow[] with dot-path _id                             ║
+║  flattenSubtaskRow(entity) → SubtaskRow     (singular, used in SubtaskGrid)       ║
+║  extractSubtaskEntities(doc) → SubtaskEntity[]  (seeds subtaskApi cache)          ║
+║              pathUtils.ts: getIn / setIn / walkLeafPaths / flattenUpdate          ║
+╚═══════════════════════════════════════════════════════════════════════════════════╝
 ```
 
 ## Data Flows
 
 | Flow | Path |
 |---|---|
-| **Edit cell** | AG Grid `onCellValueChanged` → `cellEdited({path, old, new})` / `batchEdited([...])` for cascaded dueDate → `patches` updated → selector re-overlays → `DirtyCell` shows yellow border |
-| **Add row** | `+ Add Task` button → `rowAdded(newRow)` → `createdRows.push(row)` → selector appends row → grid shows it with green background |
-| **Delete row** | `Delete` button → `rowDeleted({row})` → if local: removes from `createdRows`; if server: pushes to `deletedRowIds` → selector filters it out |
-| **Remote merge** | Button → `mergeRemote(flattenUpdate(remoteData))` → dirty paths set `conflict`; clean paths accept remote + rebase undo stack → `DirtyCell` shows red border + tooltip |
-| **Undo** | Button → `undo()` → pops undoStack group → cell: restores `localValue` (removes patch if back to server value); addRow: removes from `createdRows`; deleteRow: restores row → pushes to redoStack |
-| **Redo** | Button → `redo()` → pops redoStack group → reverses undo logic → pushes to undoStack |
-| **Save** | Button → `saveDocument` mutation (700ms) → `saveSuccess()` → clears `patches`, `createdRows`, `deletedRowIds`, both stacks |
+| **Edit task cell** | AG Grid `onCellValueChanged` → `cellEdited({path, old, new})` → `edits.patches` → `makeTaskRowSelector` re-overlays → `DirtyCell` (reads store) shows yellow border |
+| **Edit task dueDate** | Same as above for task, then thunk reads `subtaskApi` cache + `editsSubtasks.patches` → `subtaskBatchEdited([...])` → cascade to all sibling subtasks in one undo group |
+| **Edit subtask cell** | AG Grid `onCellValueChanged` → `subtaskCellEdited({path, old, new})` → `editsSubtasks.patches` → SubtaskGrid `useMemo` re-overlays → `DirtyCell` (reads `context.patches`) shows yellow border |
+| **Edit subtask dueDate** | Thunk reads siblings + `editsSubtasks.patches` → `subtaskBatchEdited` for all siblings (one undo group) + `cellEdited` to parent task (separate undo group in `edits`) |
+| **Undo subtask dueDate** | `subtaskUndo()` reverses subtask stack → peek detects `.dueDate` patch → `cascadeTaskDueDate` writes matching value into `edits` via `cellEdited` |
+| **Add / Delete task** | Toolbar buttons → `rowAdded` / `rowDeleted` → `edits.createdRows` / `edits.deletedRowIds` → selector filters/appends |
+| **Add / Delete subtask** | SubtaskGrid toolbar → `subtaskRowAdded` / `subtaskRowDeleted` → `editsSubtasks.createdRows` / `deletedRowIds` → inline `useMemo` filters/appends |
+| **Task undo / redo** | StatusPanel buttons → `undo()` / `redo()` → operates on `edits` stack only |
+| **Subtask undo / redo** | SubtaskGrid toolbar → `subtaskUndo()` / `subtaskRedo()` → operates on `editsSubtasks` stack only; dueDate change cascades to parent task |
+| **Remote merge** | Button → `mergeRemote(flattenUpdate(data))` → dirty paths get `conflict` set; clean paths rebase undo stack → `DirtyCell` shows red border + tooltip |
+| **Save** | StatusPanel → `saveDocument` (700ms) + `saveSubtasks` (700ms) → `saveSuccess()` + `subtaskSaveSuccess()` → both slices cleared |
 
-## EditsState Shape
+## DirtyCell patch source
 
-```typescript
-EditsState {
-  patches:       Record<DotPath, EditEntry>   // cell-level dirty tracking
-  createdRows:   TaskRow[]                    // rows added locally (not yet on server)
-  deletedRowIds: string[]                     // server row IDs pending deletion
-  undoStack:     InversePatch[][]             // grouped; max 100 entries
-  redoStack:     InversePatch[][]
-  log:           string[]
-}
-
-EditEntry {
-  localValue:  unknown        // current value shown in UI
-  serverValue: unknown        // last known server baseline
-  conflict:    unknown | null // remote value that arrived while field was dirty
-}
-```
-
-## "Pending changes" count
-
-`RtkEditDemo` and `StatusPanel` both compute total pending changes as:
+`DirtyCell` is used in both grids but must read from different state:
 
 ```
-patches.length + createdRows.length + deletedRowIds.length
+GridPanel (task grid)
+  AgGridReact — no context prop set
+  DirtyCell → params.context.patches is undefined
+            → falls back to useAppSelector(state.edits.patches[path])
+
+SubtaskGrid
+  AgGridReact — context={{ patches }}  ← editsSubtasks.patches passed explicitly
+  DirtyCell → params.context.patches is defined
+            → uses context patches directly, skips store selector
 ```
 
-The Save button is disabled only when this total is 0 (or save is in-flight). Conflicts turn the button red but do not block saving — saving commits local values.
+This keeps `DirtyCell` slice-agnostic without needing separate components.
+
+## dueDate Cross-Slice Cascade
+
+Editing dueDate always writes to **both** slices. Because each slice has an independent undo stack, the two entries undo independently:
+
+```
+Task dueDate edited in GridPanel:
+  edits.undoStack       ← [cellPatch: task.dueDate]    (one entry)
+  editsSubtasks.undoStack ← [batchPatch: all sub.dueDate] (one entry)
+
+Subtask dueDate edited in SubtaskGrid:
+  editsSubtasks.undoStack ← [batchPatch: all sub.dueDate] (one entry)
+  edits.undoStack         ← [cellPatch: task.dueDate]    (one entry, via cellEdited)
+
+Undo subtask dueDate:
+  subtaskUndo() pops editsSubtasks stack
+  → detects .dueDate in popped group → cascadeTaskDueDate()
+  → dispatches cellEdited to edits (adds new entry to edits.undoStack)
+```
+
+## editsSlice Factory
+
+`editsSlice.ts` no longer exports a single slice — it exports `createEditsSlice(name)`, a factory that produces independent slice instances with identical reducer logic:
+
+```
+createEditsSlice('edits')         → taskEditsSlice   (default export as editsReducer)
+createEditsSlice('editsSubtasks') → subtaskEditsSlice (in subtaskEditsSlice.ts)
+```
+
+Both instances share `CellPatch | RowAddPatch | RowDeletePatch` with `BaseRow` (generic `{ _id, ...}`), so neither is tied to `TaskRow` or `SubtaskRow` specifically.
 
 ## File Responsibilities
 
 | File | Role |
 |---|---|
 | `RtkEditDemo.tsx` | Root container; dirty-count chip; simulate remote buttons; log panel |
-| `GridPanel.tsx` | Toolbar (Add/Delete); L4 task grid; dueDate cascade via `batchEdited`; delegates to `SubtaskGrid` |
-| `SubtaskGrid.tsx` | L5 subtask grid; applies patches via `applyPatchesToSubtaskRows` |
-| `StatusPanel.tsx` | Undo/redo/save controls; lists new rows, deleted rows, and dirty cells with conflict badges |
-| `DirtyCell.tsx` | Custom AG Grid renderer; yellow border = dirty, red border + tooltip = conflict |
-| `../../store/editsSlice.ts` | All Redux logic: cell patches, row add/delete, undo/redo stacks, merge conflict |
-| `../../store/selectors.ts` | Memoized row flattening, delete filtering, created-row appending, patch overlay |
-| `../../store/documentApi.ts` | RTK Query with `keepUnusedDataFor: Infinity` |
-| `../../store/mockServerDoc.ts` | 6-level document shape + `flattenToTaskRows` / `flattenSubtaskRows` |
+| `GridPanel.tsx` | Toolbar (Add/Delete); L4 task grid; dueDate cascade via thunk into `subtaskBatchEdited`; delegates to `SubtaskGrid` |
+| `SubtaskGrid.tsx` | Fetches L5 rows from `subtaskApi`; own Undo/Redo/Add/Delete toolbar; patches via `editsSubtasks`; passes `context.patches` to grid |
+| `StatusPanel.tsx` | Task-level Undo/Redo/Save; lists new/deleted rows and dirty cell patches with conflict badges |
+| `DirtyCell.tsx` | Context-aware renderer: uses `context.patches` if provided, else `state.edits.patches`; yellow = dirty, red = conflict |
+| `../../store/editsSlice.ts` | `createEditsSlice(name)` factory + default task slice export; all reducer logic lives here |
+| `../../store/subtaskEditsSlice.ts` | Second instance: `createEditsSlice('editsSubtasks')` with `subtask`-prefixed action exports |
+| `../../store/selectors.ts` | Memoized task row flattening, delete filtering, created-row appending, patch overlay |
+| `../../store/documentApi.ts` | RTK Query for task document; `keepUnusedDataFor: Infinity` |
+| `../../store/subtaskApi.ts` | RTK Query for subtask microservice; `getSubtasksByTask(taskId)` / `saveSubtasks`; `keepUnusedDataFor: Infinity` |
+| `../../store/mockServerDoc.ts` | 6-level doc shape; `flattenToTaskRows`, `flattenSubtaskRow`, `extractSubtaskEntities` |
 | `../../store/pathUtils.ts` | Dot-path helpers: `getIn`, `setIn`, `walkLeafPaths`, `flattenUpdate` |
 
 ## InversePatch State Machines
 
-### Cell edit
+### Cell edit (both slices)
 ```
-              cellEdited
-(absent) ──────────────────► dirty { localValue, serverValue }
-                                 │
-              mergeRemote (local ≠ remote)
-                                 ▼
-                           conflicted  ◄─── stays until undo/redo/save
-                                 │
-                    undo (oldValue == serverValue)
-                                 ▼
-                            (absent / clean)
+              cellEdited / subtaskCellEdited
+(absent) ──────────────────────────────────► dirty { localValue, serverValue }
+                                                 │
+              mergeRemote (local ≠ remote)        │
+                                                 ▼
+                                           conflicted  ◄─── stays until undo/redo/save
+                                                 │
+                              undo (oldValue == serverValue)
+                                                 ▼
+                                            (absent / clean)
 ```
 
-### Row add
+### Row add (both slices)
 ```
-              rowAdded
-(absent) ──────────────────► createdRows[] (green bg in grid)
-                                 │
-              undo (addRow)       │   redo (addRow)
-                 ◄───────────────┤───────────────►
-             (removed)       createdRows[]
-                                 │
+              rowAdded / subtaskRowAdded
+(absent) ──────────────────────────────► createdRows[] (green bg in grid)
+                                              │
+              undo            │   redo
+                 ◄────────────┤────────────►
+             (removed)   createdRows[]
+                              │
               saveSuccess
-                                 ▼
-                          (committed to server)
+                              ▼
+                       (committed to server)
 ```
 
-### Row delete
+### Row delete (both slices)
 ```
-              rowDeleted (server row)            rowDeleted (local row)
-grid row ──────────────────────────────────► deletedRowIds[]  /  removed from createdRows[]
-                                                    │
-              undo (deleteRow)                       │   redo (deleteRow)
-                 ◄──────────────────────────────────┤────────────────────►
-           restored in grid                  deletedRowIds[]
-                                                    │
+              rowDeleted (server row)
+grid row ─────────────────────────────► deletedRowIds[] (hidden in grid)
+                                              │
+              undo            │   redo
+                 ◄────────────┤────────────►
+           restored      deletedRowIds[]
+                              │
               saveSuccess
-                                                    ▼
-                                           (deletion committed)
+                              ▼
+                       (deletion committed)
+
+              rowDeleted (local/created row)
+              → removed from createdRows[] immediately (no deletedRowIds entry)
 ```
-
-## Key Design Decisions
-
-**Dot-path flat map (`patches`)** — cell edits are stored as `"div.0.proj.1.task.2.name" → EditEntry` rather than nested objects. Conflict detection and undo work at any nesting depth without tree traversal.
-
-**Separate `createdRows` / `deletedRowIds`** — row-level operations are tracked orthogonally to cell patches. This means undo/redo for row add/delete never touches `patches`, keeping the two concerns independent.
-
-**Polymorphic `InversePatch`** — the undo/redo stack stores a discriminated union (`CellPatch | RowAddPatch | RowDeletePatch`) so a single undo can atomically reverse a mixed group (e.g., a batch cell edit).
-
-**Patches overlay / selector** — the RTK Query server doc is never mutated. `makeTaskRowSelector` merges `patches` over the cached doc, filters `deletedRowIds`, and appends `createdRows` on every read. Memoised with `createSelector` so the 6-level flattening only re-runs when the server doc changes.
-
-**Undo stack rebasing** — when a clean field receives a remote update via `mergeRemote`, prior undo entries for that path have their `oldValue` rebased to the new remote value. This prevents an undo from silently reverting a concurrent remote change.

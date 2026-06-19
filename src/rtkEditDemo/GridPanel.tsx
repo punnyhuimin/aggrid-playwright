@@ -4,6 +4,8 @@ import type { ColDef, CellValueChangedEvent, RowSelectedEvent, RowClassParams } 
 import { Box, Button, Tooltip, Typography } from '@mui/material'
 import { useAppDispatch, useAppSelector } from '../store/index'
 import { cellEdited, rowAdded, rowDeleted } from '../store/editsSlice'
+import { subtaskBatchEdited } from '../store/subtaskEditsSlice'
+import { subtaskApi } from '../store/subtaskApi'
 import { makeTaskRowSelector } from '../store/selectors'
 import { DirtyCell } from './DirtyCell'
 import SubtaskGrid from './SubtaskGrid'
@@ -49,13 +51,37 @@ export default function GridPanel() {
   const handleCellValueChanged = useCallback(
     (event: CellValueChangedEvent<TaskRow>) => {
       if (!event.colDef.field) return
+      const { _id: taskDotPath, id: taskId } = event.data
+
+      // Always record the task-level edit
       dispatch(
         cellEdited({
-          path: `${event.data._id}.${event.colDef.field}`,
+          path: `${taskDotPath}.${event.colDef.field}`,
           newValue: event.newValue,
           oldValue: event.oldValue,
         }),
       )
+
+      // dueDate cascade: propagate to all subtasks as a single grouped undo entry
+      // in the subtask slice. Uses a thunk to read the subtask cache + patches.
+      if (event.colDef.field === 'dueDate') {
+        dispatch((_, getState) => {
+          const state = getState()
+          const subtasks =
+            subtaskApi.endpoints.getSubtasksByTask.select(taskId)(state).data ?? []
+          if (subtasks.length === 0) return
+          const subPatches = state.editsSubtasks.patches
+          dispatch(
+            subtaskBatchEdited(
+              subtasks.map((sub) => ({
+                path: `${sub.id}.dueDate`,
+                newValue: event.newValue,
+                oldValue: subPatches[`${sub.id}.dueDate`]?.localValue ?? sub.dueDate,
+              })),
+            ),
+          )
+        })
+      }
     },
     [dispatch],
   )

@@ -5,9 +5,13 @@ import { Box, Button, CircularProgress, Tooltip, Typography } from '@mui/materia
 import { useAppDispatch, useAppSelector } from '../store/index'
 import {
   subtaskCellEdited,
+  subtaskBatchEdited,
   subtaskRowAdded,
   subtaskRowDeleted,
+  subtaskUndo,
+  subtaskRedo,
 } from '../store/subtaskEditsSlice'
+import { cellEdited, type CellPatch } from '../store/editsSlice'
 import { useGetSubtasksByTaskQuery } from '../store/subtaskApi'
 import { flattenSubtaskRow } from './mockServerDoc'
 import { DirtyCell } from './DirtyCell'
@@ -45,6 +49,8 @@ export default function SubtaskGrid({ taskRow }: SubtaskGridProps) {
   const patches = useAppSelector((s) => s.editsSubtasks.patches)
   const createdRows = useAppSelector((s) => s.editsSubtasks.createdRows)
   const deletedRowIds = useAppSelector((s) => s.editsSubtasks.deletedRowIds)
+  const undoDepth = useAppSelector((s) => s.editsSubtasks.undoStack.length)
+  const redoDepth = useAppSelector((s) => s.editsSubtasks.redoStack.length)
 
   // Flatten server subtasks → rows, filter deleted, apply patches, append created
   const rowData = useMemo((): SubtaskRow[] => {
@@ -81,20 +87,97 @@ export default function SubtaskGrid({ taskRow }: SubtaskGridProps) {
   const handleCellValueChanged = useCallback(
     (event: CellValueChangedEvent<SubtaskRow>) => {
       if (!event.colDef.field) return
-      dispatch(
-        subtaskCellEdited({
-          path: `${(event.data as SubtaskRow)._id}.${event.colDef.field}`,
-          newValue: event.newValue,
-          oldValue: event.oldValue,
-        }),
-      )
+      const field = event.colDef.field
+
+      if (field !== 'dueDate') {
+        dispatch(
+          subtaskCellEdited({
+            path: `${(event.data as SubtaskRow)._id}.${field}`,
+            newValue: event.newValue,
+            oldValue: event.oldValue,
+          }),
+        )
+        return
+      }
+
+      // dueDate cascade: all sibling subtasks (single undo entry in subtask stack)
+      // + the parent task (separate undo entry in task stack)
+      dispatch((_, getState) => {
+        const state = getState()
+        const subPatches = state.editsSubtasks.patches
+        const allSubtasks = serverSubtasks ?? []
+
+        dispatch(
+          subtaskBatchEdited(
+            allSubtasks.map((sub) => ({
+              path: `${sub.id}.dueDate`,
+              newValue: event.newValue,
+              oldValue: subPatches[`${sub.id}.dueDate`]?.localValue ?? sub.dueDate,
+            })),
+          ),
+        )
+
+        const taskPatches = state.edits.patches
+        dispatch(
+          cellEdited({
+            path: `${taskRow._id}.dueDate`,
+            newValue: event.newValue,
+            oldValue: taskPatches[`${taskRow._id}.dueDate`]?.localValue ?? taskRow.dueDate,
+          }),
+        )
+      })
     },
-    [dispatch],
+    [dispatch, serverSubtasks, taskRow],
   )
 
   const handleRowSelected = useCallback((event: RowSelectedEvent<SubtaskRow>) => {
     if (event.node.isSelected()) setSelectedSubtask(event.data ?? null)
   }, [])
+
+  // Finds the dueDate value that subtasks will be restored to after an undo/redo,
+  // then cascades that value to the parent task so the two stay in sync.
+  const cascadeTaskDueDate = useCallback(
+    (restoredValue: unknown) => {
+      const taskPatchPath = `${taskRow._id}.dueDate`
+      dispatch((_, getState) => {
+        const taskPatches = getState().edits.patches
+        dispatch(
+          cellEdited({
+            path: taskPatchPath,
+            newValue: restoredValue,
+            oldValue: taskPatches[taskPatchPath]?.localValue ?? taskRow.dueDate,
+          }),
+        )
+      })
+    },
+    [dispatch, taskRow],
+  )
+
+  const handleSubtaskUndo = useCallback(() => {
+    dispatch((_, getState) => {
+      const undoStack = getState().editsSubtasks.undoStack
+      if (!undoStack.length) return
+      const topEntry = undoStack[undoStack.length - 1]
+      dispatch(subtaskUndo())
+      const dueDatePatch = topEntry.find(
+        (p): p is CellPatch => p.kind === 'cell' && p.path.endsWith('.dueDate'),
+      )
+      if (dueDatePatch) cascadeTaskDueDate(dueDatePatch.oldValue)
+    })
+  }, [dispatch, cascadeTaskDueDate])
+
+  const handleSubtaskRedo = useCallback(() => {
+    dispatch((_, getState) => {
+      const redoStack = getState().editsSubtasks.redoStack
+      if (!redoStack.length) return
+      const topEntry = redoStack[redoStack.length - 1]
+      dispatch(subtaskRedo())
+      const dueDatePatch = topEntry.find(
+        (p): p is CellPatch => p.kind === 'cell' && p.path.endsWith('.dueDate'),
+      )
+      if (dueDatePatch) cascadeTaskDueDate(dueDatePatch.newValue)
+    })
+  }, [dispatch, cascadeTaskDueDate])
 
   const handleAddSubtask = useCallback(() => {
     const newId = `new-${crypto.randomUUID().slice(0, 8)}`
@@ -151,7 +234,7 @@ export default function SubtaskGrid({ taskRow }: SubtaskGridProps) {
       </Typography>
 
       {/* Subtask toolbar */}
-      <Box sx={{ display: 'flex', gap: 1, mb: 0.5, alignItems: 'center' }}>
+      <Box sx={{ display: 'flex', gap: 1, mb: 0.5, alignItems: 'center', flexWrap: 'wrap' }}>
         <Button size="small" variant="outlined" color="success" onClick={handleAddSubtask}>
           + Add Subtask
         </Button>
@@ -168,6 +251,12 @@ export default function SubtaskGrid({ taskRow }: SubtaskGridProps) {
             </Button>
           </span>
         </Tooltip>
+        <Button size="small" onClick={handleSubtaskUndo} disabled={!undoDepth}>
+          ↩ Undo ({undoDepth})
+        </Button>
+        <Button size="small" onClick={handleSubtaskRedo} disabled={!redoDepth}>
+          Redo ({redoDepth}) ↪
+        </Button>
         {selectedSubtask && (
           <Typography variant="caption" color="text.secondary">
             Selected: {selectedSubtask.name}
