@@ -3,7 +3,7 @@ import { AgGridReact } from 'ag-grid-react'
 import type { ColDef, CellValueChangedEvent, RowSelectedEvent, RowClassParams } from 'ag-grid-community'
 import { Box, Button, Tooltip, Typography } from '@mui/material'
 import { useAppDispatch, useAppSelector } from '../store/index'
-import { cellEdited, batchEdited, rowAdded, rowDeleted } from '../store/editsSlice'
+import { cellEdited, rowAdded, rowDeleted } from '../store/editsSlice'
 import { makeTaskRowSelector } from '../store/selectors'
 import { DirtyCell } from './DirtyCell'
 import SubtaskGrid from './SubtaskGrid'
@@ -44,38 +44,20 @@ export default function GridPanel() {
 
   const rowSelector = useMemo(() => makeTaskRowSelector(MOCK_DOC_ID), [])
   const rowData = useAppSelector(rowSelector)
-  const patches = useAppSelector((s) => s.edits.patches)
   const createdRows = useAppSelector((s) => s.edits.createdRows)
 
   const handleCellValueChanged = useCallback(
     (event: CellValueChangedEvent<TaskRow>) => {
       if (!event.colDef.field) return
-      const field = event.colDef.field
-      const taskId = event.data._id
-
-      if (field === 'dueDate') {
-        const subtasks = event.data._rawSubtasks
-        dispatch(
-          batchEdited([
-            { path: `${taskId}.dueDate`, newValue: event.newValue, oldValue: event.oldValue },
-            ...subtasks.map((sub, i) => {
-              const subPath = `${taskId}.subtasks.${i}.dueDate`
-              const oldValue = patches[subPath]?.localValue ?? sub.dueDate
-              return { path: subPath, newValue: event.newValue, oldValue }
-            }),
-          ]),
-        )
-      } else {
-        dispatch(
-          cellEdited({
-            path: `${taskId}.${field}`,
-            newValue: event.newValue,
-            oldValue: event.oldValue,
-          }),
-        )
-      }
+      dispatch(
+        cellEdited({
+          path: `${event.data._id}.${event.colDef.field}`,
+          newValue: event.newValue,
+          oldValue: event.oldValue,
+        }),
+      )
     },
-    [dispatch, patches],
+    [dispatch],
   )
 
   const handleRowSelected = useCallback((event: RowSelectedEvent<TaskRow>) => {

@@ -253,11 +253,18 @@ export type TaskRow = {
   assignee: string
   dueDate: string
   priority: Task['priority']
-  _rawSubtasks: Subtask[]
+}
+
+// SubtaskEntity is what the subtask microservice returns — a flat entity with a
+// taskId FK rather than being embedded inside the task document.
+export type SubtaskEntity = Omit<Subtask, 'metrics'> & {
+  taskId: string
+  metricCount: number
 }
 
 export type SubtaskRow = {
-  _id: string           // dot-path: "divisions.0.projects.1.tasks.2.subtasks.3"
+  _id: string           // = SubtaskEntity.id (stable entity ID, not a positional path)
+  taskId: string        // FK to parent task
   id: string
   name: string
   status: Subtask['status']
@@ -280,7 +287,6 @@ export function flattenToTaskRows(doc: CompanyDoc): TaskRow[] {
           assignee: task.assignee,
           dueDate: task.dueDate,
           priority: task.priority,
-          _rawSubtasks: task.subtasks,
         })
       })
     })
@@ -288,13 +294,37 @@ export function flattenToTaskRows(doc: CompanyDoc): TaskRow[] {
   return rows
 }
 
-export function flattenSubtaskRows(taskId: string, subtasks: Subtask[]): SubtaskRow[] {
-  return subtasks.map((sub, si) => ({
-    _id: `${taskId}.subtasks.${si}`,
-    id: sub.id,
-    name: sub.name,
-    status: sub.status,
-    dueDate: sub.dueDate,
-    metricCount: sub.metrics.length,
-  }))
+/** Flatten a SubtaskEntity (from the subtask microservice) into a grid row. */
+export function flattenSubtaskRow(entity: SubtaskEntity): SubtaskRow {
+  return {
+    _id: entity.id,       // stable entity ID — no longer positional
+    taskId: entity.taskId,
+    id: entity.id,
+    name: entity.name,
+    status: entity.status,
+    dueDate: entity.dueDate,
+    metricCount: entity.metricCount,
+  }
+}
+
+/** Extract all subtasks from a nested CompanyDoc as flat SubtaskEntity records. */
+export function extractSubtaskEntities(doc: CompanyDoc): SubtaskEntity[] {
+  const entities: SubtaskEntity[] = []
+  doc.divisions.forEach((div) => {
+    div.projects.forEach((proj) => {
+      proj.tasks.forEach((task) => {
+        task.subtasks.forEach((sub) => {
+          entities.push({
+            id: sub.id,
+            taskId: task.id,
+            name: sub.name,
+            status: sub.status,
+            dueDate: sub.dueDate,
+            metricCount: sub.metrics.length,
+          })
+        })
+      })
+    })
+  })
+  return entities
 }

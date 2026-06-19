@@ -26,50 +26,50 @@
 ║  │  renderer: DirtyCell ─────────────╫────╫──patches     ║                    ║
 ║  └───────────────────────────────────┘    ║              ║                    ║
 ╚═══════════════════════════════════════════╩══════════════╩════════════════════╝
-         ▲ rowData (patched + created - deleted)    ▲ undo/redo depth
-         │                                          │ save → mutation
-         │                                          │
-╔════════╧══════════════════════════════════════════╧══════════════════════╗
-║                          Redux Store                                      ║
-║  ┌───────────────────────────────────────────────────────────────────┐   ║
-║  │  editsSlice                                                       │   ║
-║  │                                                                   │   ║
-║  │  patches:       Record<DotPath, EditEntry>                        │   ║
-║  │  createdRows:   TaskRow[]        ← local-only rows                │   ║
-║  │  deletedRowIds: string[]         ← server rows marked for delete  │   ║
-║  │  undoStack:     InversePatch[][] ← max 100 groups                 │   ║
-║  │  redoStack:     InversePatch[][]                                  │   ║
-║  │  log:           string[]                                          │   ║
-║  │                                                                   │   ║
-║  │  InversePatch = CellPatch | RowAddPatch | RowDeletePatch          │   ║
-║  │    CellPatch      { kind:'cell',      path, oldValue, newValue }  │   ║
-║  │    RowAddPatch    { kind:'addRow',    row: TaskRow }              │   ║
-║  │    RowDeletePatch { kind:'deleteRow', row: TaskRow, wasLocal }    │   ║
-║  │                                                                   │   ║
-║  │  Actions: cellEdited  batchEdited  rowAdded  rowDeleted           │   ║
-║  │           mergeRemote  undo  redo  saveSuccess  clearLog          │   ║
-║  └───────────────────────────────────────────────────────────────────┘   ║
-║  ┌───────────────────────────────────────────────────────────────────┐   ║
-║  │  documentApi (RTK Query)  keepUnusedDataFor: Infinity             │   ║
-║  │  getDocument(docId) → mockCompanyDoc (fake fetch)                 │   ║
-║  │  saveDocument(doc)  → 700ms simulated delay                       │   ║
-║  └───────────────────────────────────────────────────────────────────┘   ║
-╚═══════════════════════════════════════════════════════════════════════════╝
-         ▲ serverDoc from RTK cache
-         │
-╔════════╧══════════════════════════════════════════════════════════════════╗
-║                          selectors.ts                                      ║
-║  makeTaskRowSelector(docId)  ← createSelector (memoized)                   ║
-║    inputs: serverDoc, patches, createdRows, deletedRowIds                  ║
-║    1. flattenToTaskRows(serverDoc)                                          ║
-║    2. filter out deletedRowIds                                              ║
-║    3. overlay patches (localValue) on each server row                      ║
-║    4. overlay patches on each createdRow                                   ║
-║    5. return [...serverRows, ...patchedCreatedRows]                         ║
-║                                                                            ║
-║  applyPatchesToSubtaskRows(taskId, rawSubtasks, patches)                   ║
-║  selectEditEntry / selectAllDirtyPaths / selectIsDirtyUnder                ║
-╚════════════════════════════════════════════════════════════════════════════╝
+  ▲ rowData via makeTaskRowSelector          ▲ selectAllDirtyPaths / raw state
+  │ applyPatchesToSubtaskRows (useMemo)      │ dispatch(action) ──────────────────►
+  │                                          │                                    │
+╔═╧══════════════════════════════════════════╧══════════════════════════════════╗ │
+║                            selectors.ts                                        ║ │
+║  makeTaskRowSelector(docId)  ← createSelector (memoized)                       ║ │
+║    inputs: serverDoc, patches, createdRows, deletedRowIds                      ║ │
+║    1. flattenToTaskRows(serverDoc)                                              ║ │
+║    2. filter out deletedRowIds                                                  ║ │
+║    3. overlay patches (localValue) on each server row                          ║ │
+║    4. overlay patches on each createdRow                                       ║ │
+║    5. return [...serverRows, ...patchedCreatedRows]                             ║ │
+║                                                                                ║ │
+║  applyPatchesToSubtaskRows(taskId, rawSubtasks, patches)  ← used in component  ║ │
+║  selectEditEntry / selectAllDirtyPaths / selectIsDirtyUnder                    ║ │
+╚═╤══════════════════════════════════════════════════════════════════════════════╝ │
+  │ reads from                                                                     │
+  ▼                                                                                ▼
+╔══════════════════════════════════════════════════════════════════════════════════╗
+║                              Redux Store                                         ║
+║  ┌────────────────────────────────────────────────────────────────────────┐     ║
+║  │  editsSlice                                                            │     ║
+║  │                                                                        │     ║
+║  │  patches:       Record<DotPath, EditEntry>                             │     ║
+║  │  createdRows:   TaskRow[]        ← local-only rows                     │     ║
+║  │  deletedRowIds: string[]         ← server rows marked for delete       │     ║
+║  │  undoStack:     InversePatch[][] ← max 100 groups                      │     ║
+║  │  redoStack:     InversePatch[][]                                       │     ║
+║  │  log:           string[]                                               │     ║
+║  │                                                                        │     ║
+║  │  InversePatch = CellPatch | RowAddPatch | RowDeletePatch               │     ║
+║  │    CellPatch      { kind:'cell',      path, oldValue, newValue }       │     ║
+║  │    RowAddPatch    { kind:'addRow',    row: TaskRow }                   │     ║
+║  │    RowDeletePatch { kind:'deleteRow', row: TaskRow, wasLocal }         │     ║
+║  │                                                                        │     ║
+║  │  Actions: cellEdited  batchEdited  rowAdded  rowDeleted                │     ║
+║  │           mergeRemote  undo  redo  saveSuccess  clearLog               │     ║
+║  └────────────────────────────────────────────────────────────────────────┘     ║
+║  ┌────────────────────────────────────────────────────────────────────────┐     ║
+║  │  documentApi (RTK Query)  keepUnusedDataFor: Infinity                  │     ║
+║  │  getDocument(docId) → mockCompanyDoc (fake fetch)                      │     ║
+║  │  saveDocument(doc)  → 700ms simulated delay                            │     ║
+║  └────────────────────────────────────────────────────────────────────────┘     ║
+╚══════════════════════════════════════════════════════════════════════════════════╝
          ▲ doc shape + row types
          │
 ╔════════╧══════════════════════════════════════════════════════════════════╗

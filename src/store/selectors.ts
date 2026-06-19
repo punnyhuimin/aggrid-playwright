@@ -1,9 +1,9 @@
 import { createSelector } from '@reduxjs/toolkit'
 import { documentApi } from './documentApi'
-import { flattenToTaskRows, flattenSubtaskRows } from '../rtkEditDemo/mockServerDoc'
+import { flattenToTaskRows } from '../rtkEditDemo/mockServerDoc'
 import type { RootState } from './index'
 import type { DotPath, EditEntry } from './editsSlice'
-import type { TaskRow, SubtaskRow, Subtask } from '../rtkEditDemo/mockServerDoc'
+import type { TaskRow } from '../rtkEditDemo/mockServerDoc'
 
 // ── Task row selector ────────────────────────────────────────────────────────
 
@@ -39,28 +39,6 @@ function applyPatchesToRow(row: TaskRow, patches: Record<DotPath, EditEntry>): T
     if (!field.includes('.')) result[field] = entry.localValue
   }
   return result as TaskRow
-}
-
-// ── Subtask row helper (called inside component, not a memoized selector) ────
-
-/**
- * Applies patches to subtask rows. Used inside SubtaskGrid with useMemo.
- */
-export function applyPatchesToSubtaskRows(
-  taskId: string,
-  rawSubtasks: Subtask[],
-  patches: Record<DotPath, EditEntry>,
-): SubtaskRow[] {
-  return flattenSubtaskRows(taskId, rawSubtasks).map((row) => {
-    const result = { ...row } as Record<string, unknown> & SubtaskRow
-    const prefix = row._id + '.'
-    for (const [path, entry] of Object.entries(patches)) {
-      if (!path.startsWith(prefix)) continue
-      const field = path.slice(prefix.length)
-      if (!field.includes('.')) result[field] = entry.localValue
-    }
-    return result as SubtaskRow
-  })
 }
 
 // ── Per-field helpers ────────────────────────────────────────────────────────
