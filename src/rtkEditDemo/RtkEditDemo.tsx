@@ -5,6 +5,7 @@ import { useGetDocumentQuery } from '../store/documentApi'
 import { MOCK_DOC_ID } from './mockServerDoc'
 import { flattenUpdate } from './pathUtils'
 import GridPanel from './GridPanel'
+import MapPanel from './MapPanel'
 import StatusPanel from './StatusPanel'
 
 // Pre-defined simulated server pushes for the demo
@@ -52,7 +53,14 @@ export default function RtkEditDemo() {
   const dispatch = useAppDispatch()
   const log = useAppSelector((s) => s.edits.log)
   const dirtyCount = useAppSelector(
-    (s) => Object.keys(s.edits.patches).length + s.edits.createdRows.length + s.edits.deletedRowIds.length,
+    (s) =>
+      Object.keys(s.edits.patches).length +
+      s.edits.createdRows.length +
+      s.edits.deletedRowIds.length +
+      s.edits.mapDirtyCount +
+      Object.keys(s.editsSubtasks.patches).length +
+      s.editsSubtasks.createdRows.length +
+      s.editsSubtasks.deletedRowIds.length,
   )
 
   // Keep the RTKQuery subscription alive so keepUnusedDataFor=Infinity is exercised
@@ -113,11 +121,16 @@ export default function RtkEditDemo() {
         </Typography>
       </Box>
 
-      {/* Main content: grid + status panel */}
+      {/* Main content: grid + map (left column) + status panel (right) */}
       <Box sx={{ flex: 1, display: 'flex', minHeight: 0, overflow: 'hidden' }}>
-        {/* Grid area */}
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <GridPanel />
+        {/* Left column: grid on top, map on bottom */}
+        <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
+          <Box sx={{ flex: '0 0 55%', minHeight: 0, overflow: 'hidden' }}>
+            <GridPanel />
+          </Box>
+          <Box sx={{ flex: '0 0 45%', minHeight: 0, overflow: 'hidden', borderTop: 1, borderColor: 'divider' }}>
+            <MapPanel />
+          </Box>
         </Box>
 
         {/* Right panel: status + log */}

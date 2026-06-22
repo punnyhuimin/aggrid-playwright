@@ -15,9 +15,10 @@ const STATUS_VALUES = ['todo', 'in-progress', 'done']
 const PRIORITY_VALUES = ['low', 'medium', 'high']
 
 const colDefs: ColDef<TaskRow>[] = [
-  { field: '_divisionName', headerName: 'Division', flex: 1, editable: false },
-  { field: '_projectName', headerName: 'Project', flex: 1, editable: false },
-  { field: 'name', headerName: 'Task Name', flex: 2, editable: true, cellRenderer: DirtyCell },
+  { field: '_divisionName', headerName: 'Region', flex: 1, editable: false },
+  { field: '_projectName', headerName: 'Batch', flex: 1, editable: false },
+  { field: 'name', headerName: 'Delivery Order', flex: 2, editable: true, cellRenderer: DirtyCell },
+  { field: 'assignee', headerName: 'Driver', flex: 1, editable: true, cellRenderer: DirtyCell },
   {
     field: 'status',
     flex: 1,
@@ -26,8 +27,8 @@ const colDefs: ColDef<TaskRow>[] = [
     cellEditorParams: { values: STATUS_VALUES },
     cellRenderer: DirtyCell,
   },
-  { field: 'assignee', flex: 1, editable: true, cellRenderer: DirtyCell },
-  { field: 'dueDate', headerName: 'Due Date', flex: 1, editable: true, cellRenderer: DirtyCell },
+  { field: 'dueDate', headerName: 'Date', flex: 1, editable: true, cellRenderer: DirtyCell },
+  { field: 'deliveryTime', headerName: 'Time', flex: 1, editable: true, cellRenderer: DirtyCell },
   {
     field: 'priority',
     flex: 1,
@@ -97,15 +98,17 @@ export default function GridPanel() {
     const newId = `new-${crypto.randomUUID().slice(0, 8)}`
     const newRow: TaskRow = {
       _id: newId,
-      _divisionName: contextRow?._divisionName ?? 'Engineering',
-      _projectName: contextRow?._projectName ?? 'Alpha Platform',
+      _divisionName: contextRow?._divisionName ?? 'North Region',
+      _projectName: contextRow?._projectName ?? 'Morning Batch',
       id: newId,
-      name: 'New Task',
+      name: 'New Delivery Order',
       status: 'todo',
       assignee: '',
       dueDate: '',
+      deliveryTime: '',
       priority: 'medium',
-      _rawSubtasks: [],
+      fromLon: 103.82, fromLat: 1.35,
+      toLon:   103.82, toLat:   1.35,
     }
     dispatch(rowAdded(newRow))
   }, [dispatch, selectedRow, rowData])

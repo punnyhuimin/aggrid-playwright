@@ -25,7 +25,7 @@ interface SubtaskGridProps {
 const STATUS_VALUES = ['todo', 'in-progress', 'done']
 
 const colDefs: ColDef<SubtaskRow>[] = [
-  { field: 'name', headerName: 'Subtask', editable: true, flex: 2, cellRenderer: DirtyCell },
+  { field: 'name', headerName: 'Item', editable: true, flex: 2, cellRenderer: DirtyCell },
   {
     field: 'status',
     editable: true,
@@ -35,6 +35,8 @@ const colDefs: ColDef<SubtaskRow>[] = [
     cellRenderer: DirtyCell,
   },
   { field: 'dueDate', headerName: 'Due Date', editable: true, flex: 1, cellRenderer: DirtyCell },
+  { field: 'stockLon', headerName: 'Stock Lon', editable: true, flex: 1, cellRenderer: DirtyCell, type: 'numericColumn' },
+  { field: 'stockLat', headerName: 'Stock Lat', editable: true, flex: 1, cellRenderer: DirtyCell, type: 'numericColumn' },
   { field: 'metricCount', headerName: 'Metrics', flex: 1 },
 ]
 
@@ -185,9 +187,11 @@ export default function SubtaskGrid({ taskRow }: SubtaskGridProps) {
       _id: newId,
       taskId: taskRow.id,
       id: newId,
-      name: 'New Subtask',
+      name: 'New Item',
       status: 'todo',
       dueDate: '',
+      stockLon: taskRow.fromLon ?? 103.82,
+      stockLat: taskRow.fromLat ?? 1.35,
       metricCount: 0,
     }
     dispatch(subtaskRowAdded(newRow))

@@ -1,5 +1,6 @@
-// 6-level nested document: Company → Division → Project → Task → Subtask → Metric
-// AG Grid main rows = Tasks (L4); sub-grid rows = Subtasks (L5); Metrics (L6) shown as count.
+// 6-level nested document: Company → Division → Project → DeliveryOrder → Item → Metric
+// AG Grid main rows = Delivery Orders (L4); sub-grid rows = Items to Collect (L5).
+// Coordinates are WGS84 [longitude, latitude] across Singapore.
 
 export type Metric = {                          // L6
   id: string
@@ -8,21 +9,31 @@ export type Metric = {                          // L6
   unit: string
 }
 
-export type Subtask = {                         // L5
+export type Subtask = {                         // L5 — item to collect
   id: string
   name: string
   status: 'todo' | 'in-progress' | 'done'
   dueDate: string
+  // Where this item is stored for pickup (editable — drives the route on the map)
+  stockLon: number
+  stockLat: number
   metrics: Metric[]
 }
 
-export type Task = {                            // L4 — main grid row
+export type Task = {                            // L4 — delivery order
   id: string
   name: string
   status: 'todo' | 'in-progress' | 'done'
-  assignee: string
+  assignee: string          // driver
   dueDate: string
+  deliveryTime: string      // "HH:MM"
   priority: 'low' | 'medium' | 'high'
+  // Origin of the delivery truck
+  fromLon: number
+  fromLat: number
+  // Delivery destination
+  toLon: number
+  toLat: number
   subtasks: Subtask[]
 }
 
@@ -50,95 +61,161 @@ export const MOCK_DOC_ID = 'demo-company-1'
 
 export const mockCompanyDoc: CompanyDoc = {
   id: MOCK_DOC_ID,
-  name: 'Acme Corp',
+  name: 'Swift Logistics Pte Ltd',
   divisions: [
     {
       id: 'div-1',
-      name: 'Engineering',
-      region: 'North America',
+      name: 'North Region',
+      region: 'North & East Singapore',
       projects: [
         {
           id: 'proj-1',
-          name: 'Alpha Platform',
+          name: 'Morning Batch',
           budget: 500_000,
           tasks: [
             {
               id: 'task-1',
-              name: 'API Design',
-              status: 'done',
-              assignee: 'Alice',
-              dueDate: '2026-06-01',
+              name: 'Delivery #001 – City Hall to Tampines',
+              status: 'in-progress',
+              assignee: 'Alice Tan',
+              dueDate: '2026-06-20',
+              deliveryTime: '09:00',
               priority: 'high',
+              fromLon: 103.852, fromLat: 1.293,   // City Hall MRT
+              toLon:   103.943, toLat:   1.352,   // Tampines Hub
               subtasks: [
-                { id: 'sub-1-1', name: 'Define endpoints', status: 'done', dueDate: '2026-06-01', metrics: [{ id: 'm1', name: 'Coverage', value: 95, unit: '%' }, { id: 'm2', name: 'Latency', value: 120, unit: 'ms' }] },
-                { id: 'sub-1-2', name: 'Write OpenAPI spec', status: 'done', dueDate: '2026-06-01', metrics: [{ id: 'm3', name: 'Endpoints', value: 42, unit: 'count' }, { id: 'm4', name: 'Review time', value: 3, unit: 'days' }] },
+                {
+                  id: 'sub-1-1', name: 'Collect: Office supplies', status: 'done',
+                  dueDate: '2026-06-20', stockLon: 103.856, stockLat: 1.301,  // Bugis
+                  metrics: [{ id: 'm1', name: 'Weight', value: 25, unit: 'kg' }, { id: 'm2', name: 'Boxes', value: 4, unit: 'count' }],
+                },
+                {
+                  id: 'sub-1-2', name: 'Collect: Stationery', status: 'in-progress',
+                  dueDate: '2026-06-20', stockLon: 103.863, stockLat: 1.308,  // Lavender
+                  metrics: [{ id: 'm3', name: 'Weight', value: 8, unit: 'kg' }, { id: 'm4', name: 'Boxes', value: 2, unit: 'count' }],
+                },
               ],
             },
             {
               id: 'task-2',
-              name: 'Backend Development',
-              status: 'in-progress',
-              assignee: 'Bob',
-              dueDate: '2026-07-15',
+              name: 'Delivery #002 – Jurong East to Woodlands',
+              status: 'todo',
+              assignee: 'Bob Lim',
+              dueDate: '2026-06-20',
+              deliveryTime: '09:30',
               priority: 'high',
+              fromLon: 103.742, fromLat: 1.333,   // Jurong East MRT
+              toLon:   103.787, toLat:   1.436,   // Woodlands Checkpoint
               subtasks: [
-                { id: 'sub-2-1', name: 'Auth service', status: 'done', dueDate: '2026-07-15', metrics: [{ id: 'm5', name: 'Tests', value: 87, unit: 'count' }, { id: 'm6', name: 'Coverage', value: 91, unit: '%' }] },
-                { id: 'sub-2-2', name: 'Data layer', status: 'in-progress', dueDate: '2026-07-15', metrics: [{ id: 'm7', name: 'Tables', value: 12, unit: 'count' }, { id: 'm8', name: 'Query time', value: 45, unit: 'ms' }] },
+                {
+                  id: 'sub-2-1', name: 'Collect: Electronics', status: 'todo',
+                  dueDate: '2026-06-20', stockLon: 103.765, stockLat: 1.315,  // Clementi
+                  metrics: [{ id: 'm5', name: 'Weight', value: 15, unit: 'kg' }, { id: 'm6', name: 'Units', value: 6, unit: 'count' }],
+                },
+                {
+                  id: 'sub-2-2', name: 'Collect: Gadgets', status: 'todo',
+                  dueDate: '2026-06-20', stockLon: 103.797, stockLat: 1.312,  // Holland V
+                  metrics: [{ id: 'm7', name: 'Weight', value: 5, unit: 'kg' }, { id: 'm8', name: 'Units', value: 3, unit: 'count' }],
+                },
               ],
             },
             {
               id: 'task-3',
-              name: 'Frontend Development',
+              name: 'Delivery #003 – Changi to Orchard',
               status: 'todo',
-              assignee: 'Carol',
-              dueDate: '2026-08-30',
+              assignee: 'Carol Ng',
+              dueDate: '2026-06-21',
+              deliveryTime: '10:00',
               priority: 'medium',
+              fromLon: 103.985, fromLat: 1.357,   // Changi Airport
+              toLon:   103.832, toLat:   1.304,   // Orchard Rd
               subtasks: [
-                { id: 'sub-3-1', name: 'Design system', status: 'todo', dueDate: '2026-08-30', metrics: [{ id: 'm9', name: 'Components', value: 0, unit: 'count' }, { id: 'm10', name: 'Estimate', value: 10, unit: 'days' }] },
-                { id: 'sub-3-2', name: 'Dashboard views', status: 'todo', dueDate: '2026-08-30', metrics: [{ id: 'm11', name: 'Screens', value: 0, unit: 'count' }, { id: 'm12', name: 'Estimate', value: 15, unit: 'days' }] },
+                {
+                  id: 'sub-3-1', name: 'Collect: Clothing', status: 'todo',
+                  dueDate: '2026-06-21', stockLon: 103.943, stockLat: 1.352,  // Tampines
+                  metrics: [{ id: 'm9', name: 'Weight', value: 12, unit: 'kg' }, { id: 'm10', name: 'Bags', value: 5, unit: 'count' }],
+                },
+                {
+                  id: 'sub-3-2', name: 'Collect: Accessories', status: 'todo',
+                  dueDate: '2026-06-21', stockLon: 103.873, stockLat: 1.350,  // Serangoon
+                  metrics: [{ id: 'm11', name: 'Weight', value: 3, unit: 'kg' }, { id: 'm12', name: 'Bags', value: 2, unit: 'count' }],
+                },
               ],
             },
           ],
         },
         {
           id: 'proj-2',
-          name: 'Beta Infrastructure',
+          name: 'Afternoon Batch',
           budget: 200_000,
           tasks: [
             {
               id: 'task-4',
-              name: 'Server Migration',
-              status: 'in-progress',
-              assignee: 'Dave',
+              name: 'Delivery #004 – Bedok to Yishun',
+              status: 'todo',
+              assignee: 'Dave Ong',
               dueDate: '2026-06-20',
+              deliveryTime: '13:00',
               priority: 'high',
+              fromLon: 103.928, fromLat: 1.324,   // Bedok MRT
+              toLon:   103.836, toLat:   1.429,   // Yishun Town
               subtasks: [
-                { id: 'sub-4-1', name: 'Inventory audit', status: 'done', dueDate: '2026-06-20', metrics: [{ id: 'm13', name: 'Servers', value: 24, unit: 'count' }, { id: 'm14', name: 'Migrated', value: 18, unit: 'count' }] },
-                { id: 'sub-4-2', name: 'Cutover plan', status: 'in-progress', dueDate: '2026-06-20', metrics: [{ id: 'm15', name: 'Risk score', value: 3, unit: '/5' }, { id: 'm16', name: 'Downtime', value: 2, unit: 'hours' }] },
+                {
+                  id: 'sub-4-1', name: 'Collect: Groceries', status: 'todo',
+                  dueDate: '2026-06-20', stockLon: 103.908, stockLat: 1.321,  // Kembangan
+                  metrics: [{ id: 'm13', name: 'Weight', value: 40, unit: 'kg' }, { id: 'm14', name: 'Crates', value: 3, unit: 'count' }],
+                },
+                {
+                  id: 'sub-4-2', name: 'Collect: Beverages', status: 'todo',
+                  dueDate: '2026-06-20', stockLon: 103.893, stockLat: 1.318,  // Paya Lebar
+                  metrics: [{ id: 'm15', name: 'Weight', value: 60, unit: 'kg' }, { id: 'm16', name: 'Crates', value: 5, unit: 'count' }],
+                },
               ],
             },
             {
               id: 'task-5',
-              name: 'Load Balancing',
+              name: 'Delivery #005 – Queenstown to Punggol',
               status: 'todo',
-              assignee: 'Eve',
-              dueDate: '2026-07-01',
+              assignee: 'Eve Chua',
+              dueDate: '2026-06-21',
+              deliveryTime: '14:00',
               priority: 'medium',
+              fromLon: 103.806, fromLat: 1.299,   // Queenstown MRT
+              toLon:   103.902, toLat:   1.404,   // Punggol Waterway
               subtasks: [
-                { id: 'sub-5-1', name: 'Config HAProxy', status: 'todo', dueDate: '2026-07-01', metrics: [{ id: 'm17', name: 'Nodes', value: 4, unit: 'count' }, { id: 'm18', name: 'RPS target', value: 5000, unit: 'req/s' }] },
-                { id: 'sub-5-2', name: 'Load test', status: 'todo', dueDate: '2026-07-01', metrics: [{ id: 'm19', name: 'Scenarios', value: 0, unit: 'count' }, { id: 'm20', name: 'Duration', value: 60, unit: 'min' }] },
+                {
+                  id: 'sub-5-1', name: 'Collect: Hardware', status: 'todo',
+                  dueDate: '2026-06-21', stockLon: 103.789, stockLat: 1.307,  // Buona Vista
+                  metrics: [{ id: 'm17', name: 'Weight', value: 35, unit: 'kg' }, { id: 'm18', name: 'Boxes', value: 4, unit: 'count' }],
+                },
+                {
+                  id: 'sub-5-2', name: 'Collect: Tools', status: 'todo',
+                  dueDate: '2026-06-21', stockLon: 103.848, stockLat: 1.351,  // Bishan
+                  metrics: [{ id: 'm19', name: 'Weight', value: 18, unit: 'kg' }, { id: 'm20', name: 'Boxes', value: 2, unit: 'count' }],
+                },
               ],
             },
             {
               id: 'task-6',
-              name: 'Monitoring Setup',
+              name: 'Delivery #006 – Bishan to Tuas',
               status: 'todo',
-              assignee: 'Frank',
-              dueDate: '2026-07-10',
+              assignee: 'Frank Ho',
+              dueDate: '2026-06-22',
+              deliveryTime: '15:00',
               priority: 'low',
+              fromLon: 103.848, fromLat: 1.351,   // Bishan MRT
+              toLon:   103.636, toLat:   1.321,   // Tuas Port
               subtasks: [
-                { id: 'sub-6-1', name: 'Dashboards', status: 'todo', dueDate: '2026-07-10', metrics: [{ id: 'm21', name: 'Panels', value: 0, unit: 'count' }, { id: 'm22', name: 'Alerts', value: 0, unit: 'count' }] },
-                { id: 'sub-6-2', name: 'Alerting rules', status: 'todo', dueDate: '2026-07-10', metrics: [{ id: 'm23', name: 'Rules', value: 0, unit: 'count' }, { id: 'm24', name: 'SLA target', value: 99.9, unit: '%' }] },
+                {
+                  id: 'sub-6-1', name: 'Collect: Paper products', status: 'todo',
+                  dueDate: '2026-06-22', stockLon: 103.849, stockLat: 1.370,  // Ang Mo Kio
+                  metrics: [{ id: 'm21', name: 'Weight', value: 50, unit: 'kg' }, { id: 'm22', name: 'Reams', value: 20, unit: 'count' }],
+                },
+                {
+                  id: 'sub-6-2', name: 'Collect: Packaging', status: 'todo',
+                  dueDate: '2026-06-22', stockLon: 103.714, stockLat: 1.340,  // Jurong West
+                  metrics: [{ id: 'm23', name: 'Weight', value: 22, unit: 'kg' }, { id: 'm24', name: 'Boxes', value: 10, unit: 'count' }],
+                },
               ],
             },
           ],
@@ -147,91 +224,157 @@ export const mockCompanyDoc: CompanyDoc = {
     },
     {
       id: 'div-2',
-      name: 'Operations',
-      region: 'Europe',
+      name: 'South Region',
+      region: 'South & West Singapore',
       projects: [
         {
           id: 'proj-3',
-          name: 'Gamma Rollout',
+          name: 'Express Deliveries',
           budget: 150_000,
           tasks: [
             {
               id: 'task-7',
-              name: 'Market Analysis',
+              name: 'Delivery #007 – Toa Payoh to Sentosa',
               status: 'done',
-              assignee: 'Grace',
-              dueDate: '2026-05-15',
+              assignee: 'Grace Lee',
+              dueDate: '2026-06-20',
+              deliveryTime: '10:30',
               priority: 'high',
+              fromLon: 103.847, fromLat: 1.333,   // Toa Payoh
+              toLon:   103.818, toLat:   1.250,   // Sentosa Gateway
               subtasks: [
-                { id: 'sub-7-1', name: 'Competitor research', status: 'done', dueDate: '2026-05-15', metrics: [{ id: 'm25', name: 'Competitors', value: 8, unit: 'count' }, { id: 'm26', name: 'Market share', value: 12, unit: '%' }] },
-                { id: 'sub-7-2', name: 'Customer surveys', status: 'done', dueDate: '2026-05-15', metrics: [{ id: 'm27', name: 'Responses', value: 240, unit: 'count' }, { id: 'm28', name: 'NPS', value: 42, unit: 'score' }] },
+                {
+                  id: 'sub-7-1', name: 'Collect: Cosmetics', status: 'done',
+                  dueDate: '2026-06-20', stockLon: 103.843, stockLat: 1.320,  // Novena
+                  metrics: [{ id: 'm25', name: 'Weight', value: 6, unit: 'kg' }, { id: 'm26', name: 'Units', value: 30, unit: 'count' }],
+                },
+                {
+                  id: 'sub-7-2', name: 'Collect: Skincare', status: 'done',
+                  dueDate: '2026-06-20', stockLon: 103.845, stockLat: 1.299,  // Dhoby Ghaut
+                  metrics: [{ id: 'm27', name: 'Weight', value: 4, unit: 'kg' }, { id: 'm28', name: 'Units', value: 20, unit: 'count' }],
+                },
               ],
             },
             {
               id: 'task-8',
-              name: 'User Onboarding',
-              status: 'in-progress',
-              assignee: 'Henry',
-              dueDate: '2026-07-31',
+              name: 'Delivery #008 – Pioneer to CBD',
+              status: 'done',
+              assignee: 'Henry Goh',
+              dueDate: '2026-06-20',
+              deliveryTime: '11:00',
               priority: 'high',
+              fromLon: 103.697, fromLat: 1.332,   // Pioneer MRT
+              toLon:   103.852, toLat:   1.284,   // Raffles Place
               subtasks: [
-                { id: 'sub-8-1', name: 'Tutorial flows', status: 'in-progress', dueDate: '2026-07-31', metrics: [{ id: 'm29', name: 'Steps', value: 6, unit: 'count' }, { id: 'm30', name: 'Completion rate', value: 68, unit: '%' }] },
-                { id: 'sub-8-2', name: 'Email sequences', status: 'todo', dueDate: '2026-07-31', metrics: [{ id: 'm31', name: 'Emails', value: 0, unit: 'count' }, { id: 'm32', name: 'Open rate target', value: 35, unit: '%' }] },
+                {
+                  id: 'sub-8-1', name: 'Collect: Pharmaceuticals', status: 'done',
+                  dueDate: '2026-06-20', stockLon: 103.706, stockLat: 1.339,  // Boon Lay
+                  metrics: [{ id: 'm29', name: 'Weight', value: 10, unit: 'kg' }, { id: 'm30', name: 'Packs', value: 50, unit: 'count' }],
+                },
+                {
+                  id: 'sub-8-2', name: 'Collect: Medical devices', status: 'done',
+                  dueDate: '2026-06-20', stockLon: 103.742, stockLat: 1.333,  // Jurong East
+                  metrics: [{ id: 'm31', name: 'Weight', value: 20, unit: 'kg' }, { id: 'm32', name: 'Units', value: 8, unit: 'count' }],
+                },
               ],
             },
             {
               id: 'task-9',
-              name: 'Support Training',
-              status: 'todo',
-              assignee: 'Iris',
-              dueDate: '2026-08-15',
+              name: 'Delivery #009 – Sengkang to Clementi',
+              status: 'in-progress',
+              assignee: 'Iris Wong',
+              dueDate: '2026-06-21',
+              deliveryTime: '14:30',
               priority: 'medium',
+              fromLon: 103.895, fromLat: 1.391,   // Sengkang MRT
+              toLon:   103.765, toLat:   1.315,   // Clementi Mall
               subtasks: [
-                { id: 'sub-9-1', name: 'Training materials', status: 'todo', dueDate: '2026-08-15', metrics: [{ id: 'm33', name: 'Modules', value: 0, unit: 'count' }, { id: 'm34', name: 'Hours', value: 8, unit: 'h' }] },
-                { id: 'sub-9-2', name: 'Mock sessions', status: 'todo', dueDate: '2026-08-15', metrics: [{ id: 'm35', name: 'Sessions', value: 0, unit: 'count' }, { id: 'm36', name: 'Attendees', value: 0, unit: 'count' }] },
+                {
+                  id: 'sub-9-1', name: 'Collect: Books', status: 'in-progress',
+                  dueDate: '2026-06-21', stockLon: 103.902, stockLat: 1.404,  // Punggol
+                  metrics: [{ id: 'm33', name: 'Weight', value: 30, unit: 'kg' }, { id: 'm34', name: 'Boxes', value: 3, unit: 'count' }],
+                },
+                {
+                  id: 'sub-9-2', name: 'Collect: Stationery', status: 'todo',
+                  dueDate: '2026-06-21', stockLon: 103.892, stockLat: 1.367,  // Hougang
+                  metrics: [{ id: 'm35', name: 'Weight', value: 12, unit: 'kg' }, { id: 'm36', name: 'Boxes', value: 2, unit: 'count' }],
+                },
               ],
             },
           ],
         },
         {
           id: 'proj-4',
-          name: 'Delta Compliance',
+          name: 'Bulk Orders',
           budget: 80_000,
           tasks: [
             {
               id: 'task-10',
-              name: 'Audit Preparation',
+              name: 'Delivery #010 – Kallang to Jurong',
               status: 'in-progress',
-              assignee: 'Jack',
-              dueDate: '2026-06-30',
+              assignee: 'Jack Tan',
+              dueDate: '2026-06-20',
+              deliveryTime: '08:00',
               priority: 'high',
+              fromLon: 103.871, fromLat: 1.311,   // Kallang
+              toLon:   103.742, toLat:   1.333,   // Jurong East
               subtasks: [
-                { id: 'sub-10-1', name: 'Evidence gathering', status: 'in-progress', dueDate: '2026-06-30', metrics: [{ id: 'm37', name: 'Controls', value: 45, unit: 'count' }, { id: 'm38', name: 'Covered', value: 30, unit: 'count' }] },
-                { id: 'sub-10-2', name: 'Gap analysis', status: 'todo', dueDate: '2026-06-30', metrics: [{ id: 'm39', name: 'Gaps', value: 7, unit: 'count' }, { id: 'm40', name: 'Critical', value: 2, unit: 'count' }] },
+                {
+                  id: 'sub-10-1', name: 'Collect: Steel beams', status: 'in-progress',
+                  dueDate: '2026-06-20', stockLon: 103.882, stockLat: 1.317,  // Aljunied
+                  metrics: [{ id: 'm37', name: 'Weight', value: 800, unit: 'kg' }, { id: 'm38', name: 'Beams', value: 4, unit: 'count' }],
+                },
+                {
+                  id: 'sub-10-2', name: 'Collect: Concrete mix', status: 'todo',
+                  dueDate: '2026-06-20', stockLon: 103.893, stockLat: 1.318,  // Paya Lebar
+                  metrics: [{ id: 'm39', name: 'Weight', value: 500, unit: 'kg' }, { id: 'm40', name: 'Bags', value: 20, unit: 'count' }],
+                },
               ],
             },
             {
               id: 'task-11',
-              name: 'Policy Documentation',
+              name: 'Delivery #011 – Ang Mo Kio to Marina Bay',
               status: 'in-progress',
-              assignee: 'Karen',
-              dueDate: '2026-07-20',
+              assignee: 'Karen Yeo',
+              dueDate: '2026-06-20',
+              deliveryTime: '08:30',
               priority: 'medium',
+              fromLon: 103.849, fromLat: 1.370,   // Ang Mo Kio Hub
+              toLon:   103.861, toLat:   1.284,   // Marina Bay Sands
               subtasks: [
-                { id: 'sub-11-1', name: 'Draft policies', status: 'in-progress', dueDate: '2026-07-20', metrics: [{ id: 'm41', name: 'Policies', value: 12, unit: 'count' }, { id: 'm42', name: 'Approved', value: 5, unit: 'count' }] },
-                { id: 'sub-11-2', name: 'Legal review', status: 'todo', dueDate: '2026-07-20', metrics: [{ id: 'm43', name: 'Documents', value: 0, unit: 'count' }, { id: 'm44', name: 'Est. days', value: 14, unit: 'days' }] },
+                {
+                  id: 'sub-11-1', name: 'Collect: Timber', status: 'in-progress',
+                  dueDate: '2026-06-20', stockLon: 103.839, stockLat: 1.355,  // Marymount
+                  metrics: [{ id: 'm41', name: 'Weight', value: 300, unit: 'kg' }, { id: 'm42', name: 'Planks', value: 15, unit: 'count' }],
+                },
+                {
+                  id: 'sub-11-2', name: 'Collect: Roofing tiles', status: 'todo',
+                  dueDate: '2026-06-20', stockLon: 103.848, stockLat: 1.351,  // Bishan
+                  metrics: [{ id: 'm43', name: 'Weight', value: 200, unit: 'kg' }, { id: 'm44', name: 'Pallets', value: 2, unit: 'count' }],
+                },
               ],
             },
             {
               id: 'task-12',
-              name: 'Final Review',
+              name: 'Delivery #012 – Sembawang to East Coast',
               status: 'todo',
-              assignee: 'Liam',
-              dueDate: '2026-09-01',
+              assignee: 'Liam Koh',
+              dueDate: '2026-06-22',
+              deliveryTime: '09:00',
               priority: 'low',
+              fromLon: 103.820, fromLat: 1.449,   // Sembawang
+              toLon:   103.928, toLat:   1.297,   // East Coast Park
               subtasks: [
-                { id: 'sub-12-1', name: 'Board sign-off', status: 'todo', dueDate: '2026-09-01', metrics: [{ id: 'm45', name: 'Signatories', value: 3, unit: 'count' }, { id: 'm46', name: 'ETA', value: 0, unit: 'days' }] },
-                { id: 'sub-12-2', name: 'Certification filing', status: 'todo', dueDate: '2026-09-01', metrics: [{ id: 'm47', name: 'Filings', value: 0, unit: 'count' }, { id: 'm48', name: 'Deadline risk', value: 2, unit: '/5' }] },
+                {
+                  id: 'sub-12-1', name: 'Collect: Paint', status: 'todo',
+                  dueDate: '2026-06-22', stockLon: 103.820, stockLat: 1.403,  // Mandai
+                  metrics: [{ id: 'm45', name: 'Weight', value: 80, unit: 'kg' }, { id: 'm46', name: 'Cans', value: 16, unit: 'count' }],
+                },
+                {
+                  id: 'sub-12-2', name: 'Collect: Adhesives', status: 'todo',
+                  dueDate: '2026-06-22', stockLon: 103.787, stockLat: 1.436,  // Woodlands
+                  metrics: [{ id: 'm47', name: 'Weight', value: 25, unit: 'kg' }, { id: 'm48', name: 'Boxes', value: 5, unit: 'count' }],
+                },
               ],
             },
           ],
@@ -252,7 +395,12 @@ export type TaskRow = {
   status: Task['status']
   assignee: string
   dueDate: string
+  deliveryTime: string
   priority: Task['priority']
+  fromLon: number
+  fromLat: number
+  toLon: number
+  toLat: number
 }
 
 // SubtaskEntity is what the subtask microservice returns — a flat entity with a
@@ -269,6 +417,8 @@ export type SubtaskRow = {
   name: string
   status: Subtask['status']
   dueDate: string
+  stockLon: number
+  stockLat: number
   metricCount: number
 }
 
@@ -286,7 +436,12 @@ export function flattenToTaskRows(doc: CompanyDoc): TaskRow[] {
           status: task.status,
           assignee: task.assignee,
           dueDate: task.dueDate,
+          deliveryTime: task.deliveryTime,
           priority: task.priority,
+          fromLon: task.fromLon,
+          fromLat: task.fromLat,
+          toLon: task.toLon,
+          toLat: task.toLat,
         })
       })
     })
@@ -297,12 +452,14 @@ export function flattenToTaskRows(doc: CompanyDoc): TaskRow[] {
 /** Flatten a SubtaskEntity (from the subtask microservice) into a grid row. */
 export function flattenSubtaskRow(entity: SubtaskEntity): SubtaskRow {
   return {
-    _id: entity.id,       // stable entity ID — no longer positional
+    _id: entity.id,
     taskId: entity.taskId,
     id: entity.id,
     name: entity.name,
     status: entity.status,
     dueDate: entity.dueDate,
+    stockLon: entity.stockLon,
+    stockLat: entity.stockLat,
     metricCount: entity.metricCount,
   }
 }
@@ -320,6 +477,8 @@ export function extractSubtaskEntities(doc: CompanyDoc): SubtaskEntity[] {
             name: sub.name,
             status: sub.status,
             dueDate: sub.dueDate,
+            stockLon: sub.stockLon,
+            stockLat: sub.stockLat,
             metricCount: sub.metrics.length,
           })
         })

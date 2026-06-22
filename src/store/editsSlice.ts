@@ -30,7 +30,20 @@ export type RowDeletePatch = {
   wasLocal: boolean
 }
 
-export type InversePatch = CellPatch | RowAddPatch | RowDeletePatch
+// [longitude, latitude] in WGS84
+export type MapCoord = [number, number]
+
+export type MapPatch = {
+  kind: 'map'
+  type: 'addPoint' | 'movePoint' | 'moveLine'
+  geometryId: string
+  // Full polyline path before and after the operation — undo = restore before, redo = restore after
+  before: MapCoord[]
+  after: MapCoord[]
+  label: string
+}
+
+export type InversePatch = CellPatch | RowAddPatch | RowDeletePatch | MapPatch
 
 export type EditsState = {
   patches: Record<DotPath, EditEntry>
@@ -39,6 +52,11 @@ export type EditsState = {
   log: string[]
   createdRows: BaseRow[]
   deletedRowIds: string[]
+  // Set by undo/redo when a map op is encountered; cleared by mapOpApplied once the
+  // map component has applied the geometry change to the ArcGIS view.
+  pendingMapOp: { direction: 'undo' | 'redo'; patch: MapPatch } | null
+  // Count of map changes that are "forward" in the undo stack (unsaved).
+  mapDirtyCount: number
 }
 
 const MAX_UNDO = 100
@@ -50,6 +68,8 @@ export const initialEditsState: EditsState = {
   log: [],
   createdRows: [],
   deletedRowIds: [],
+  pendingMapOp: null,
+  mapDirtyCount: 0,
 }
 
 // ── Pure reducer implementations (shared across all slice instances) ─────────
@@ -171,6 +191,10 @@ function implUndo(state: EditsState) {
         state.deletedRowIds = state.deletedRowIds.filter((id) => id !== op.row._id)
       }
       state.log.push(`[undo] deleted row "${String(op.row.name ?? op.row._id)}" → restored`)
+    } else if (op.kind === 'map') {
+      state.pendingMapOp = { direction: 'undo', patch: op }
+      state.mapDirtyCount = Math.max(0, state.mapDirtyCount - 1)
+      state.log.push(`[undo] map: ${op.label}`)
     }
   }
   state.redoStack.push(ops as InversePatch[])
@@ -202,6 +226,10 @@ function implRedo(state: EditsState) {
         state.deletedRowIds.push(op.row._id)
       }
       state.log.push(`[redo] deleted row "${String(op.row.name ?? op.row._id)}"`)
+    } else if (op.kind === 'map') {
+      state.pendingMapOp = { direction: 'redo', patch: op }
+      state.mapDirtyCount++
+      state.log.push(`[redo] map: ${op.label}`)
     }
   }
   state.undoStack.push(ops as InversePatch[])
@@ -213,6 +241,8 @@ function implSaveSuccess(state: EditsState) {
   state.redoStack = []
   state.createdRows = []
   state.deletedRowIds = []
+  state.pendingMapOp = null
+  state.mapDirtyCount = 0
   state.log.push('[server] Save confirmed — all local edits committed')
 }
 
@@ -241,6 +271,17 @@ export function createEditsSlice(name: string) {
       redo: implRedo,
       saveSuccess: implSaveSuccess,
       clearLog: implClearLog,
+      mapEventRecorded(state, action: PayloadAction<MapPatch>) {
+        const patch = action.payload
+        if (state.undoStack.length >= MAX_UNDO) state.undoStack.shift()
+        state.undoStack.push([patch])
+        state.redoStack = []
+        state.mapDirtyCount++
+        state.log.push(`[map] ${patch.label}`)
+      },
+      mapOpApplied(state) {
+        state.pendingMapOp = null
+      },
     },
   })
 }
@@ -249,6 +290,6 @@ export function createEditsSlice(name: string) {
 
 const taskEditsSlice = createEditsSlice('edits')
 
-export const { cellEdited, batchEdited, rowAdded, rowDeleted, mergeRemote, undo, redo, saveSuccess, clearLog } =
+export const { cellEdited, batchEdited, rowAdded, rowDeleted, mergeRemote, undo, redo, saveSuccess, clearLog, mapEventRecorded, mapOpApplied } =
   taskEditsSlice.actions
 export const editsReducer = taskEditsSlice.reducer
